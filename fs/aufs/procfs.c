@@ -116,10 +116,9 @@ out:
 	return err;
 }
 
-static const struct file_operations au_procfs_plm_fop = {
-	.write		= au_procfs_plm_write,
-	.release	= au_procfs_plm_release,
-	.owner		= THIS_MODULE
+static const struct proc_ops au_procfs_plm_op = {
+	.proc_write	= au_procfs_plm_write,
+	.proc_release	= au_procfs_plm_release
 };
 
 /* ---------------------------------------------------------------------- */
@@ -143,7 +142,7 @@ int __init au_procfs_init(void)
 		goto out;
 
 	entry = proc_create(AUFS_PLINK_MAINT_NAME, S_IFREG | 0200,
-			    au_procfs_dir, &au_procfs_plm_fop);
+			    au_procfs_dir, &au_procfs_plm_op);
 	if (unlikely(!entry))
 		goto out_dir;
 
