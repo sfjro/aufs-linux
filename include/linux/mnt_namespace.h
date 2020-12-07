@@ -6,11 +6,13 @@
 struct mnt_namespace;
 struct fs_struct;
 struct user_namespace;
+struct ns_common;
 struct vfsmount;
 
 extern struct mnt_namespace *copy_mnt_ns(unsigned long, struct mnt_namespace *,
 		struct user_namespace *, struct fs_struct *);
 extern void put_mnt_ns(struct mnt_namespace *ns);
+extern struct ns_common *from_mnt_ns(struct mnt_namespace *);
 
 extern int is_current_mnt_ns(struct vfsmount *mnt);
 
