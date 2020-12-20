@@ -696,7 +696,7 @@ int cpup_entry(struct au_cp_generic *cpg, struct dentry *dst_parent,
 	case S_IFCHR:
 	case S_IFBLK:
 		AuDebugOn(!capable(CAP_MKNOD));
-		/*FALLTHROUGH*/
+		fallthrough;
 	case S_IFIFO:
 	case S_IFSOCK:
 		err = vfsub_mknod(h_dir, &h_path, mode, h_inode->i_rdev);

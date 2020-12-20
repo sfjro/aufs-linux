@@ -494,7 +494,7 @@ au_wbr_create_val(char *str, struct au_opt_wbr_create *create)
 			err = e;
 			break;
 		}
-		/*FALLTHROUGH*/
+		fallthrough;
 	case AuWbrCreate_MFS:
 	case AuWbrCreate_PMFS:
 		create->mfs_second = AUFS_MFS_DEF_SEC;
@@ -1226,7 +1226,7 @@ int au_opts_parse(struct super_block *sb, char *str, struct au_opts *opts)
 
 		case Opt_ignore:
 			pr_warn("ignored %s\n", opt_str);
-			/*FALLTHROUGH*/
+			fallthrough;
 		case Opt_ignore_silent:
 			skipped = 1;
 			err = 0;
@@ -1282,7 +1282,7 @@ static int au_opt_wbr_create(struct super_block *sb,
 	case AuWbrCreate_PMFSRR:
 	case AuWbrCreate_PMFSRRV:
 		sbinfo->si_wbr_mfs.mfsrr_watermark = create->mfsrr_watermark;
-		/*FALLTHROUGH*/
+		fallthrough;
 	case AuWbrCreate_MFS:
 	case AuWbrCreate_MFSV:
 	case AuWbrCreate_PMFS:
@@ -1502,7 +1502,7 @@ static int au_opt_br(struct super_block *sb, struct au_opt *opt,
 		/* Always goto add, not fallthrough */
 	case Opt_prepend:
 		opt->add.bindex = 0;
-		/* fallthrough */
+		fallthrough;
 	add: /* indented label */
 	case Opt_add:
 		err = au_br_add(sb, &opt->add,
