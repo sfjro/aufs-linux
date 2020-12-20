@@ -571,7 +571,7 @@ int au_hnotify(struct inode *h_dir, struct au_hnotify *hnotify, u32 mask,
 	case FS_MOVED_TO:
 		au_fset_hnjob(flags[AuHn_CHILD], XINO0);
 		au_fset_hnjob(flags[AuHn_CHILD], MNTPNT);
-		/*FALLTHROUGH*/
+		fallthrough;
 	case FS_CREATE:
 		AuDebugOn(!h_child_name);
 		break;
