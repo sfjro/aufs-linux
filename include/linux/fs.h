@@ -1894,12 +1894,6 @@ static inline int call_mmap(struct file *file, struct vm_area_struct *vma)
 	return file->f_op->mmap(file, vma);
 }
 
-typedef ssize_t (*vfs_readf_t)(struct file *, char __user *, size_t, loff_t *);
-typedef ssize_t (*vfs_writef_t)(struct file *, const char __user *, size_t,
-				loff_t *);
-vfs_readf_t vfs_readf(struct file *file);
-vfs_writef_t vfs_writef(struct file *file);
-
 extern ssize_t vfs_read(struct file *, char __user *, size_t, loff_t *);
 extern ssize_t vfs_write(struct file *, const char __user *, size_t, loff_t *);
 extern ssize_t vfs_copy_file_range(struct file *, loff_t , struct file *,

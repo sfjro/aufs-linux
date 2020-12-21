@@ -522,28 +522,6 @@ static ssize_t new_sync_write(struct file *filp, const char __user *buf, size_t 
 	return ret;
 }
 
-vfs_readf_t vfs_readf(struct file *file)
-{
-	const struct file_operations *fop = file->f_op;
-
-	if (fop->read)
-		return fop->read;
-	if (fop->read_iter)
-		return new_sync_read;
-	return ERR_PTR(-ENOSYS); /* doesn't have ->read(|_iter)() op */
-}
-
-vfs_writef_t vfs_writef(struct file *file)
-{
-	const struct file_operations *fop = file->f_op;
-
-	if (fop->write)
-		return fop->write;
-	if (fop->write_iter)
-		return new_sync_write;
-	return ERR_PTR(-ENOSYS); /* doesn't have ->write(|_iter)() op */
-}
-
 /* caller is responsible for file_start_write/file_end_write */
 ssize_t __kernel_write(struct file *file, const void *buf, size_t count, loff_t *pos)
 {
