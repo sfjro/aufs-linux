@@ -118,8 +118,6 @@ struct au_sbinfo {
 	unsigned int		si_mntflags;
 
 	/* external inode number (bitmap and translation table) */
-	vfs_readf_t		si_xread;
-	vfs_writef_t		si_xwrite;
 	loff_t			si_ximaxent;	/* max entries in a xino */
 
 	struct file		*si_xib;

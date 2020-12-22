@@ -556,32 +556,19 @@ out:
 static int au_do_cpup_symlink(struct path *h_path, struct dentry *h_src,
 			      struct inode *h_dir)
 {
-	int err, symlen;
-	mm_segment_t old_fs;
-	union {
-		char *k;
-		char __user *u;
-	} sym;
+	int err;
+	DEFINE_DELAYED_CALL(done);
+	const char *sym;
 
-	err = -ENOMEM;
-	sym.k = (void *)__get_free_page(GFP_NOFS);
-	if (unlikely(!sym.k))
+	sym = vfs_get_link(h_src, &done);
+	err = PTR_ERR(sym);
+	if (IS_ERR(sym))
 		goto out;
 
-	/* unnecessary to support mmap_sem since symlink is not mmap-able */
-	old_fs = get_fs();
-	set_fs(KERNEL_DS);
-	symlen = vfs_readlink(h_src, sym.u, PATH_MAX);
-	err = symlen;
-	set_fs(old_fs);
-
-	if (symlen > 0) {
-		sym.k[symlen] = 0;
-		err = vfsub_symlink(h_dir, h_path, sym.k);
-	}
-	free_page((unsigned long)sym.k);
+	err = vfsub_symlink(h_dir, h_path, sym);
 
 out:
+	do_delayed_call(&done);
 	return err;
 }
 

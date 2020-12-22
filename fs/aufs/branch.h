@@ -228,10 +228,8 @@ int au_xino_read(struct super_block *sb, aufs_bindex_t bindex, ino_t h_ino,
 		 ino_t *ino);
 int au_xino_write(struct super_block *sb, aufs_bindex_t bindex, ino_t h_ino,
 		  ino_t ino);
-ssize_t xino_fread(vfs_readf_t func, struct file *file, void *buf, size_t size,
-		   loff_t *pos);
-ssize_t xino_fwrite(vfs_writef_t func, struct file *file, void *buf,
-		    size_t size, loff_t *pos);
+ssize_t xino_fread(struct file *file, void *buf, size_t size, loff_t *pos);
+ssize_t xino_fwrite(struct file *file, void *buf, size_t size, loff_t *pos);
 
 int au_xib_trunc(struct super_block *sb);
 int au_xino_trunc(struct super_block *sb, aufs_bindex_t bindex, int idx_begin);
