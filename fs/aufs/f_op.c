@@ -229,34 +229,6 @@ static void au_write_post(struct inode *inode, struct file *h_file,
 	fput(h_file);
 }
 
-static ssize_t aufs_read(struct file *file, char __user *buf, size_t count,
-			 loff_t *ppos)
-{
-	ssize_t err;
-	struct inode *inode;
-	struct file *h_file;
-	struct super_block *sb;
-
-	inode = file_inode(file);
-	sb = inode->i_sb;
-	si_read_lock(sb, AuLock_FLUSH | AuLock_NOPLMW);
-
-	h_file = au_read_pre(file, /*keep_fi*/0, /*lsc*/0);
-	err = PTR_ERR(h_file);
-	if (IS_ERR(h_file))
-		goto out;
-
-	/* filedata may be obsoleted by concurrent copyup, but no problem */
-	err = vfsub_read_u(h_file, buf, count, ppos);
-	/* todo: necessary? */
-	/* file->f_ra = h_file->f_ra; */
-	au_read_post(inode, h_file);
-
-out:
-	si_read_unlock(sb);
-	return err;
-}
-
 /*
  * todo: very ugly
  * it locks both of i_mutex and si_rwsem for read in safe.
@@ -277,33 +249,6 @@ static void au_mtx_and_read_lock(struct inode *inode)
 		si_read_lock(sb, AuLock_NOPLMW);
 		si_read_unlock(sb);
 	}
-}
-
-static ssize_t aufs_write(struct file *file, const char __user *ubuf,
-			  size_t count, loff_t *ppos)
-{
-	ssize_t err;
-	struct au_write_pre wpre;
-	struct inode *inode;
-	struct file *h_file;
-	char __user *buf = (char __user *)ubuf;
-
-	inode = file_inode(file);
-	au_mtx_and_read_lock(inode);
-
-	wpre.lsc = 0;
-	h_file = au_write_pre(file, /*do_ready*/1, &wpre);
-	err = PTR_ERR(h_file);
-	if (IS_ERR(h_file))
-		goto out;
-
-	err = vfsub_write_u(h_file, buf, count, ppos);
-	au_write_post(inode, h_file, &wpre, err);
-
-out:
-	si_read_unlock(inode->i_sb);
-	inode_unlock(inode);
-	return err;
 }
 
 static ssize_t au_do_iter(struct file *h_file, int rw, struct kiocb *kio,
@@ -775,8 +720,6 @@ const struct file_operations aufs_file_fop = {
 
 	.llseek		= default_llseek,
 
-	.read		= aufs_read,
-	.write		= aufs_write,
 	.read_iter	= aufs_read_iter,
 	.write_iter	= aufs_write_iter,
 
