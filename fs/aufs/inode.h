@@ -580,7 +580,7 @@ struct au_hnotify_op {
 	int (*alloc)(struct au_hinode *hinode);
 
 	/*
-	 * if it returns true, the the caller should free hinode->hi_notify,
+	 * if it returns true, the caller should free hinode->hi_notify,
 	 * otherwise ->free() frees it.
 	 */
 	int (*free)(struct au_hinode *hinode,
