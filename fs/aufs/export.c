@@ -108,8 +108,7 @@ void au_xigen_inc(struct inode *inode)
 	pos = inode->i_ino;
 	pos *= sizeof(igen);
 	igen = inode->i_generation + 1;
-	sz = xino_fwrite(sbinfo->si_xwrite, sbinfo->si_xigen, &igen,
-			 sizeof(igen), &pos);
+	sz = xino_fwrite(sbinfo->si_xigen, &igen, sizeof(igen), &pos);
 	if (sz == sizeof(igen))
 		return; /* success */
 
@@ -151,10 +150,10 @@ int au_xigen_new(struct inode *inode)
 	if (vfsub_f_size_read(file)
 	    < pos + sizeof(inode->i_generation)) {
 		inode->i_generation = atomic_inc_return(&sbinfo->si_xigen_next);
-		sz = xino_fwrite(sbinfo->si_xwrite, file, &inode->i_generation,
+		sz = xino_fwrite(file, &inode->i_generation,
 				 sizeof(inode->i_generation), &pos);
 	} else
-		sz = xino_fread(sbinfo->si_xread, file, &inode->i_generation,
+		sz = xino_fread(file, &inode->i_generation,
 				sizeof(inode->i_generation), &pos);
 	if (sz == sizeof(inode->i_generation))
 		goto out; /* success */

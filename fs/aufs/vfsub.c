@@ -500,22 +500,17 @@ ssize_t vfsub_read_u(struct file *file, char __user *ubuf, size_t count,
 	return err;
 }
 
-/* todo: kernel_read()? */
 ssize_t vfsub_read_k(struct file *file, void *kbuf, size_t count,
 		     loff_t *ppos)
 {
 	ssize_t err;
-	mm_segment_t oldfs;
-	union {
-		void *k;
-		char __user *u;
-	} buf;
 
-	buf.k = kbuf;
-	oldfs = get_fs();
-	set_fs(KERNEL_DS);
-	err = vfsub_read_u(file, buf.u, count, ppos);
-	set_fs(oldfs);
+	lockdep_off();
+	err = kernel_read(file, kbuf, count, ppos);
+	lockdep_on();
+	AuTraceErr(err);
+	if (err >= 0)
+		vfsub_update_h_iattr(&file->f_path, /*did*/NULL); /*ignore*/
 	return err;
 }
 
@@ -535,17 +530,12 @@ ssize_t vfsub_write_u(struct file *file, const char __user *ubuf, size_t count,
 ssize_t vfsub_write_k(struct file *file, void *kbuf, size_t count, loff_t *ppos)
 {
 	ssize_t err;
-	mm_segment_t oldfs;
-	union {
-		void *k;
-		const char __user *u;
-	} buf;
 
-	buf.k = kbuf;
-	oldfs = get_fs();
-	set_fs(KERNEL_DS);
-	err = vfsub_write_u(file, buf.u, count, ppos);
-	set_fs(oldfs);
+	lockdep_off();
+	err = kernel_write(file, kbuf, count, ppos);
+	lockdep_on();
+	if (err >= 0)
+		vfsub_update_h_iattr(&file->f_path, /*did*/NULL); /*ignore*/
 	return err;
 }
 
