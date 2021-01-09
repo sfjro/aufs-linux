@@ -19,6 +19,8 @@
 
 /* to debug easier, do not make them inlined functions */
 #define AuRwMustNoWaiters(rw)	AuDebugOn(rwsem_is_contended(rw))
+
+#ifdef CONFIG_LOCKDEP
 /* rwsem_is_locked() is unusable */
 #define AuRwMustReadLock(rw)	AuDebugOn(!lockdep_recursing(current) \
 					  && debug_locks \
@@ -32,6 +34,12 @@
 #define AuRwDestroy(rw)		AuDebugOn(!lockdep_recursing(current) \
 					  && debug_locks \
 					  && lockdep_is_held(rw))
+#else
+#define AuRwMustReadLock(rw)	do {} while (0)
+#define AuRwMustWriteLock(rw)	do {} while (0)
+#define AuRwMustAnyLock(rw)	do {} while (0)
+#define AuRwDestroy(rw)		do {} while (0)
+#endif
 
 #define au_rw_init(rw)	init_rwsem(rw)
 
