@@ -20,17 +20,21 @@
 /* to debug easier, do not make them inlined functions */
 #define AuRwMustNoWaiters(rw)	AuDebugOn(rwsem_is_contended(rw))
 /* rwsem_is_locked() is unusable */
-#define AuRwMustReadLock(rw)	AuDebugOn(!lockdep_recursing(current) \
-					  && debug_locks \
+#define AuRwMustReadLock(rw)	AuDebugOn(IS_ENABLED(CONFIG_LOCKDEP)	\
+					  && !lockdep_recursing(current) \
+					  && debug_locks		\
 					  && !lockdep_is_held_type(rw, 1))
-#define AuRwMustWriteLock(rw)	AuDebugOn(!lockdep_recursing(current) \
-					  && debug_locks \
+#define AuRwMustWriteLock(rw)	AuDebugOn(IS_ENABLED(CONFIG_LOCKDEP)	\
+					  && !lockdep_recursing(current) \
+					  && debug_locks		\
 					  && !lockdep_is_held_type(rw, 0))
-#define AuRwMustAnyLock(rw)	AuDebugOn(!lockdep_recursing(current) \
-					  && debug_locks \
+#define AuRwMustAnyLock(rw)	AuDebugOn(IS_ENABLED(CONFIG_LOCKDEP)	\
+					  && !lockdep_recursing(current) \
+					  && debug_locks		\
 					  && !lockdep_is_held(rw))
-#define AuRwDestroy(rw)		AuDebugOn(!lockdep_recursing(current) \
-					  && debug_locks \
+#define AuRwDestroy(rw)		AuDebugOn(IS_ENABLED(CONFIG_LOCKDEP)	\
+					  && !lockdep_recursing(current) \
+					  && debug_locks		\
 					  && lockdep_is_held(rw))
 
 #define au_rw_init(rw)	init_rwsem(rw)
