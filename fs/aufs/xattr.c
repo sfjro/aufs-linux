@@ -51,21 +51,26 @@ out:
 
 static const int au_xattr_out_of_list = AuBrAttr_ICEX_OTH << 1;
 
-static int au_do_cpup_xattr(struct dentry *h_dst, struct dentry *h_src,
+static int au_do_cpup_xattr(struct path *h_dst, struct path *h_src,
 			    char *name, char **buf, unsigned int ignore_flags,
 			    unsigned int verbose)
 {
 	int err;
 	ssize_t ssz;
 	struct inode *h_idst;
+	struct dentry *h_dst_dentry, *h_src_dentry;
+	struct user_namespace *h_dst_userns, *h_src_userns;
 
-	ssz = vfs_getxattr_alloc(h_src, name, buf, 0, GFP_NOFS);
+	h_src_userns = mnt_user_ns(h_src->mnt);
+	h_src_dentry = h_src->dentry;
+	ssz = vfs_getxattr_alloc(h_src_userns, h_src_dentry, name, buf, 0,
+				 GFP_NOFS);
 	err = ssz;
 	if (unlikely(err <= 0)) {
 		if (err == -ENODATA
 		    || (err == -EOPNOTSUPP
 			&& ((ignore_flags & au_xattr_out_of_list)
-			    || (au_test_nfs_noacl(d_inode(h_src))
+			    || (au_test_nfs_noacl(d_inode(h_src_dentry))
 				&& (!strcmp(name, XATTR_NAME_POSIX_ACL_ACCESS)
 				    || !strcmp(name,
 					       XATTR_NAME_POSIX_ACL_DEFAULT))))
@@ -77,9 +82,12 @@ static int au_do_cpup_xattr(struct dentry *h_dst, struct dentry *h_src,
 	}
 
 	/* unlock it temporary */
-	h_idst = d_inode(h_dst);
+	h_dst_userns = mnt_user_ns(h_dst->mnt);
+	h_dst_dentry = h_dst->dentry;
+	h_idst = d_inode(h_dst_dentry);
 	inode_unlock(h_idst);
-	err = vfsub_setxattr(h_dst, name, *buf, ssz, /*flags*/0);
+	err = vfsub_setxattr(h_dst_userns, h_dst_dentry, name, *buf, ssz,
+			     /*flags*/0);
 	inode_lock_nested(h_idst, AuLsc_I_CHILD2);
 	if (unlikely(err)) {
 		if (verbose || au_debug_test())
@@ -91,25 +99,28 @@ out:
 	return err;
 }
 
-int au_cpup_xattr(struct dentry *h_dst, struct dentry *h_src, int ignore_flags,
+int au_cpup_xattr(struct path *h_dst, struct path *h_src, int ignore_flags,
 		  unsigned int verbose)
 {
 	int err, unlocked, acl_access, acl_default;
 	ssize_t ssz;
+	struct dentry *h_dst_dentry, *h_src_dentry;
 	struct inode *h_isrc, *h_idst;
 	char *value, *p, *o, *e;
 
 	/* try stopping to update the source inode while we are referencing */
 	/* there should not be the parent-child relationship between them */
-	h_isrc = d_inode(h_src);
-	h_idst = d_inode(h_dst);
+	h_dst_dentry = h_dst->dentry;
+	h_idst = d_inode(h_dst_dentry);
+	h_src_dentry = h_src->dentry;
+	h_isrc = d_inode(h_src_dentry);
 	inode_unlock(h_idst);
 	inode_lock_shared_nested(h_isrc, AuLsc_I_CHILD);
 	inode_lock_nested(h_idst, AuLsc_I_CHILD2);
 	unlocked = 0;
 
 	/* some filesystems don't list POSIX ACL, for example tmpfs */
-	ssz = vfs_listxattr(h_src, NULL, 0);
+	ssz = vfs_listxattr(h_src_dentry, NULL, 0);
 	err = ssz;
 	if (unlikely(err < 0)) {
 		AuTraceErr(err);
@@ -128,7 +139,7 @@ int au_cpup_xattr(struct dentry *h_dst, struct dentry *h_src, int ignore_flags,
 		o = p;
 		if (unlikely(!p))
 			goto out;
-		err = vfs_listxattr(h_src, p, ssz);
+		err = vfs_listxattr(h_src_dentry, p, ssz);
 	}
 	inode_unlock_shared(h_isrc);
 	unlocked = 1;
@@ -242,7 +253,7 @@ static ssize_t au_lgxattr(struct dentry *dentry, struct inode *inode,
 		break;
 	case AU_XATTR_GET:
 		AuDebugOn(d_is_negative(h_path.dentry));
-		err = vfs_getxattr(h_path.dentry,
+		err = vfs_getxattr(mnt_user_ns(h_path.mnt), h_path.dentry,
 				   arg->u.get.name, arg->u.get.value,
 				   arg->u.get.size);
 		break;
@@ -314,6 +325,7 @@ static int au_xattr_get(const struct xattr_handler *handler,
 }
 
 static int au_xattr_set(const struct xattr_handler *handler,
+			struct user_namespace *userns,
 			struct dentry *dentry, struct inode *inode,
 			const char *name, const void *value, size_t size,
 			int flags)
