@@ -22,6 +22,7 @@ au_do_lookup(struct dentry *h_parent, struct dentry *dentry,
 	struct dentry *h_dentry;
 	struct inode *h_inode;
 	struct au_branch *br;
+	struct user_namespace *h_userns;
 	int wh_found, opq;
 	unsigned char wh_able;
 	const unsigned char allow_neg = !!au_ftest_lkup(args->flags, ALLOW_NEG);
@@ -30,9 +31,11 @@ au_do_lookup(struct dentry *h_parent, struct dentry *dentry,
 
 	wh_found = 0;
 	br = au_sbr(dentry->d_sb, bindex);
+	h_userns = au_br_userns(br);
 	wh_able = !!au_br_whable(br->br_perm);
 	if (wh_able)
-		wh_found = au_wh_test(h_parent, &args->whname, ignore_perm);
+		wh_found = au_wh_test(h_userns, h_parent, &args->whname,
+				      ignore_perm);
 	h_dentry = ERR_PTR(wh_found);
 	if (!wh_found)
 		goto real_lookup;
@@ -49,7 +52,7 @@ real_lookup:
 	if (!ignore_perm)
 		h_dentry = vfsub_lkup_one(args->name, h_parent);
 	else
-		h_dentry = au_sio_lkup_one(args->name, h_parent);
+		h_dentry = au_sio_lkup_one(h_userns, args->name, h_parent);
 	if (IS_ERR(h_dentry)) {
 		if (PTR_ERR(h_dentry) == -ENAMETOOLONG
 		    && !allow_neg)
@@ -84,7 +87,7 @@ real_lookup:
 		goto out; /* success */
 
 	inode_lock_shared_nested(h_inode, AuLsc_I_CHILD);
-	opq = au_diropq_test(h_dentry);
+	opq = au_diropq_test(h_userns, h_dentry);
 	inode_unlock_shared(h_inode);
 	if (opq > 0)
 		au_set_dbdiropq(dentry, bindex);
@@ -229,12 +232,13 @@ out:
 	return err;
 }
 
-struct dentry *au_sio_lkup_one(struct qstr *name, struct dentry *parent)
+struct dentry *au_sio_lkup_one(struct user_namespace *userns, struct qstr *name,
+			       struct dentry *parent)
 {
 	struct dentry *dentry;
 	int wkq_err;
 
-	if (!au_test_h_perm_sio(d_inode(parent), MAY_EXEC))
+	if (!au_test_h_perm_sio(userns, d_inode(parent), MAY_EXEC))
 		dentry = vfsub_lkup_one(name, parent);
 	else {
 		struct vfsub_lkup_one_args args = {
@@ -259,14 +263,16 @@ int au_lkup_neg(struct dentry *dentry, aufs_bindex_t bindex, int wh)
 	int err;
 	struct dentry *parent, *h_parent, *h_dentry;
 	struct au_branch *br;
+	struct user_namespace *h_userns;
 
 	parent = dget_parent(dentry);
 	h_parent = au_h_dptr(parent, bindex);
 	br = au_sbr(dentry->d_sb, bindex);
+	h_userns = au_br_userns(br);
 	if (wh)
 		h_dentry = au_whtmp_lkup(h_parent, br, &dentry->d_name);
 	else
-		h_dentry = au_sio_lkup_one(&dentry->d_name, h_parent);
+		h_dentry = au_sio_lkup_one(h_userns, &dentry->d_name, h_parent);
 	err = PTR_ERR(h_dentry);
 	if (IS_ERR(h_dentry))
 		goto out;

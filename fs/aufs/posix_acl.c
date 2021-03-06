@@ -50,7 +50,8 @@ out:
 	return acl;
 }
 
-int aufs_set_acl(struct inode *inode, struct posix_acl *acl, int type)
+int aufs_set_acl(struct user_namespace *userns, struct inode *inode,
+		 struct posix_acl *acl, int type)
 {
 	int err;
 	ssize_t ssz;

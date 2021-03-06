@@ -151,7 +151,7 @@ struct au_cpup_reg_attr {
 };
 
 static noinline_for_stack
-int cpup_iattr(struct dentry *dst, aufs_bindex_t bindex, struct dentry *h_src,
+int cpup_iattr(struct dentry *dst, aufs_bindex_t bindex, struct path *h_src,
 	       struct au_cpup_reg_attr *h_src_attr)
 {
 	int err, sbits, icex;
@@ -163,11 +163,11 @@ int cpup_iattr(struct dentry *dst, aufs_bindex_t bindex, struct dentry *h_src,
 	struct kstat *h_st;
 	struct au_branch *br;
 
-	h_path.dentry = au_h_dptr(dst, bindex);
-	h_idst = d_inode(h_path.dentry);
 	br = au_sbr(dst->d_sb, bindex);
 	h_path.mnt = au_br_mnt(br);
-	h_isrc = d_inode(h_src);
+	h_path.dentry = au_h_dptr(dst, bindex);
+	h_idst = d_inode(h_path.dentry);
+	h_isrc = d_inode(h_src->dentry);
 	ia.ia_valid = ATTR_FORCE | ATTR_UID | ATTR_GID
 		| ATTR_ATIME | ATTR_MTIME
 		| ATTR_ATIME_SET | ATTR_MTIME_SET;
@@ -211,7 +211,7 @@ int cpup_iattr(struct dentry *dst, aufs_bindex_t bindex, struct dentry *h_src,
 	if (!err) {
 		mnt_flags = au_mntflags(dst->d_sb);
 		verbose = !!au_opt_test(mnt_flags, VERBOSE);
-		err = au_cpup_xattr(h_path.dentry, h_src, icex, verbose);
+		err = au_cpup_xattr(&h_path, h_src, icex, verbose);
 	}
 
 	return err;
@@ -581,16 +581,18 @@ static int au_reset_acl(struct inode *h_dir, struct path *h_path, umode_t mode)
 	int err;
 	struct dentry *h_dentry;
 	struct inode *h_inode;
+	struct user_namespace *h_userns;
 
+	h_userns = mnt_user_ns(h_path->mnt);
 	h_dentry = h_path->dentry;
 	h_inode = d_inode(h_dentry);
 	/* forget_all_cached_acls(h_inode)); */
-	err = vfsub_removexattr(h_dentry, XATTR_NAME_POSIX_ACL_ACCESS);
+	err = vfsub_removexattr(h_userns, h_dentry, XATTR_NAME_POSIX_ACL_ACCESS);
 	AuTraceErr(err);
 	if (err == -EOPNOTSUPP)
 		err = 0;
 	if (!err)
-		err = vfsub_acl_chmod(h_inode, mode);
+		err = vfsub_acl_chmod(h_userns, h_inode, mode);
 
 	AuTraceErr(err);
 	return err;
@@ -601,8 +603,11 @@ static int au_do_cpup_dir(struct au_cp_generic *cpg, struct dentry *dst_parent,
 {
 	int err;
 	struct inode *dir, *inode;
+	struct user_namespace *h_userns;
 
-	err = vfsub_removexattr(h_path->dentry, XATTR_NAME_POSIX_ACL_DEFAULT);
+	h_userns = mnt_user_ns(h_path->mnt);
+	err = vfsub_removexattr(h_userns, h_path->dentry,
+				XATTR_NAME_POSIX_ACL_DEFAULT);
 	AuTraceErr(err);
 	if (err == -EOPNOTSUPP)
 		err = 0;
@@ -783,6 +788,7 @@ static int au_cpup_single(struct au_cp_generic *cpg, struct dentry *dst_parent)
 	struct inode *dst_inode, *h_dir, *inode, *delegated, *src_inode;
 	struct super_block *sb;
 	struct au_branch *br;
+	struct path h_src_path;
 	/* to reduce stack size */
 	struct {
 		struct au_dtime dt;
@@ -874,7 +880,9 @@ static int au_cpup_single(struct au_cp_generic *cpg, struct dentry *dst_parent)
 	/* todo: necessary? */
 	/* au_pin_hdir_unlock(cpg->pin); */
 
-	err = cpup_iattr(cpg->dentry, cpg->bdst, h_src, &a->h_src_attr);
+	h_src_path.dentry = h_src;
+	h_src_path.mnt = au_sbr_mnt(sb, cpg->bsrc);
+	err = cpup_iattr(cpg->dentry, cpg->bdst, &h_src_path, &a->h_src_attr);
 	if (unlikely(err)) {
 		/* todo: necessary? */
 		/* au_pin_hdir_relock(cpg->pin); */ /* ignore an error */
@@ -1076,6 +1084,7 @@ static int au_do_sio_cpup_simple(struct au_cp_generic *cpg)
 	struct dentry *dentry, *parent;
 	struct file *h_file;
 	struct inode *h_dir;
+	struct user_namespace *h_userns;
 
 	dentry = cpg->dentry;
 	h_file = NULL;
@@ -1089,7 +1098,8 @@ static int au_do_sio_cpup_simple(struct au_cp_generic *cpg)
 
 	parent = dget_parent(dentry);
 	h_dir = au_h_iptr(d_inode(parent), cpg->bdst);
-	if (!au_test_h_perm_sio(h_dir, MAY_EXEC | MAY_WRITE)
+	h_userns = au_sbr_userns(dentry->d_sb, cpg->bdst);
+	if (!au_test_h_perm_sio(h_userns, h_dir, MAY_EXEC | MAY_WRITE)
 	    && !au_cpup_sio_test(cpg->pin, d_inode(dentry)->i_mode))
 		err = au_cpup_simple(cpg);
 	else {
@@ -1259,6 +1269,7 @@ int au_sio_cpup_wh(struct au_cp_generic *cpg, struct file *file)
 	struct inode *dir, *h_dir, *h_tmpdir;
 	struct au_wbr *wbr;
 	struct au_pin wh_pin, *pin_orig;
+	struct user_namespace *h_userns;
 
 	dentry = cpg->dentry;
 	bdst = cpg->bdst;
@@ -1287,7 +1298,8 @@ int au_sio_cpup_wh(struct au_cp_generic *cpg, struct file *file)
 		cpg->pin = &wh_pin;
 	}
 
-	if (!au_test_h_perm_sio(h_tmpdir, MAY_EXEC | MAY_WRITE)
+	h_userns = au_sbr_userns(dentry->d_sb, bdst);
+	if (!au_test_h_perm_sio(h_userns, h_tmpdir, MAY_EXEC | MAY_WRITE)
 	    && !au_cpup_sio_test(cpg->pin, d_inode(dentry)->i_mode))
 		err = au_cpup_wh(cpg, file);
 	else {

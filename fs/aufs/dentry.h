@@ -60,7 +60,8 @@ struct au_do_lookup_args {
 /* dentry.c */
 extern const struct dentry_operations aufs_dop, aufs_dop_noreval;
 struct au_branch;
-struct dentry *au_sio_lkup_one(struct qstr *name, struct dentry *parent);
+struct dentry *au_sio_lkup_one(struct user_namespace *userns, struct qstr *name,
+			       struct dentry *parent);
 int au_h_verify(struct dentry *h_dentry, unsigned int udba, struct inode *h_dir,
 		struct dentry *h_parent, struct au_branch *br);
 
