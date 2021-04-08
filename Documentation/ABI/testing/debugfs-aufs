@@ -28,7 +28,7 @@ Description:
 		When the aufs mount option 'noxino' is specified, it
 		will be empty. About XINO files, see the aufs manual.
 
-What:		/debug/aufs/si_<id>/xi0, xi1 ... xiN and xiN-N
+What:		/debug/aufs/si_<id>/xi<branch-index>
 Date:		March 2009
 Contact:	J. R. Okajima <hooanon05g@gmail.com>
 Description:
