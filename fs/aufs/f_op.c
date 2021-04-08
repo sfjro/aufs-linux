@@ -401,6 +401,15 @@ out:
 	return err;
 }
 
+/*
+ * We may be able to remove aufs_splice_{read,write}() since almost all FSes
+ * don't have their own .splice_{read,write} implimentations, and they use
+ * generic_file_splice_read() and iter_file_splice_write() who can act like the
+ * simple converters to f_op->iter_read() and ->iter_write().
+ * But we keep our own implementations because some non-mainlined FSes may have
+ * their own .splice_{read,write} implimentations and aufs doesn't want to take
+ * away an opportunity to co-work with aufs from them.
+ */
 static ssize_t aufs_splice_read(struct file *file, loff_t *ppos,
 				struct pipe_inode_info *pipe, size_t len,
 				unsigned int flags)
