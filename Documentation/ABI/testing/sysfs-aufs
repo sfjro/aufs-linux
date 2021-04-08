@@ -6,14 +6,14 @@ Description:
 		per aufs mount, where <id> is a unique id generated
 		internally.
 
-What:		/sys/fs/aufs/si_<id>/br0, br1 ... brN
+What:		/sys/fs/aufs/si_<id>/br<idx>
 Date:		March 2009
 Contact:	J. R. Okajima <hooanon05g@gmail.com>
 Description:
 		It shows the abolute path of a member directory (which
 		is called branch) in aufs, and its permission.
 
-What:		/sys/fs/aufs/si_<id>/brid0, brid1 ... bridN
+What:		/sys/fs/aufs/si_<id>/brid<idx>
 Date:		July 2013
 Contact:	J. R. Okajima <hooanon05g@gmail.com>
 Description:
