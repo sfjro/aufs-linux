@@ -940,7 +940,8 @@ static void au_ren_rev_dt(int err, struct au_ren_args *a)
 
 /* ---------------------------------------------------------------------- */
 
-int aufs_rename(struct inode *_src_dir, struct dentry *_src_dentry,
+int aufs_rename(struct user_namespace *userns,
+		struct inode *_src_dir, struct dentry *_src_dentry,
 		struct inode *_dst_dir, struct dentry *_dst_dentry,
 		unsigned int _flags)
 {

@@ -353,8 +353,8 @@ out:
 	return err;
 }
 
-int aufs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
-	       dev_t dev)
+int aufs_mknod(struct user_namespace *userns, struct inode *dir,
+	       struct dentry *dentry, umode_t mode, dev_t dev)
 {
 	struct simple_arg arg = {
 		.type = Mknod,
@@ -366,7 +366,8 @@ int aufs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 	return add_simple(dir, dentry, &arg);
 }
 
-int aufs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
+int aufs_symlink(struct user_namespace *userns, struct inode *dir,
+		 struct dentry *dentry, const char *symname)
 {
 	struct simple_arg arg = {
 		.type = Symlink,
@@ -375,8 +376,8 @@ int aufs_symlink(struct inode *dir, struct dentry *dentry, const char *symname)
 	return add_simple(dir, dentry, &arg);
 }
 
-int aufs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
-		bool want_excl)
+int aufs_create(struct user_namespace *userns, struct inode *dir,
+		struct dentry *dentry, umode_t mode, bool want_excl)
 {
 	struct simple_arg arg = {
 		.type = Creat,
@@ -403,7 +404,8 @@ int au_aopen_or_create(struct inode *dir, struct dentry *dentry,
 	return add_simple(dir, dentry, &arg);
 }
 
-int aufs_tmpfile(struct inode *dir, struct dentry *dentry, umode_t mode)
+int aufs_tmpfile(struct user_namespace *userns, struct inode *dir,
+		 struct dentry *dentry, umode_t mode)
 {
 	int err;
 	aufs_bindex_t bindex;
@@ -411,6 +413,7 @@ int aufs_tmpfile(struct inode *dir, struct dentry *dentry, umode_t mode)
 	struct dentry *parent, *h_parent, *h_dentry;
 	struct inode *h_dir, *inode;
 	struct vfsmount *h_mnt;
+	struct user_namespace *h_userns;
 	struct au_wr_dir_args wr_dir_args = {
 		.force_btgt	= -1,
 		.flags		= AuWrDir_TMPFILE
@@ -457,8 +460,9 @@ int aufs_tmpfile(struct inode *dir, struct dentry *dentry, umode_t mode)
 	if (unlikely(err))
 		goto out_parent;
 
+	h_userns = mnt_user_ns(h_mnt);
 	h_parent = au_h_dptr(parent, bindex);
-	h_dentry = vfs_tmpfile(h_parent, mode, /*open_flag*/0);
+	h_dentry = vfs_tmpfile(h_userns, h_parent, mode, /*open_flag*/0);
 	if (IS_ERR(h_dentry)) {
 		err = PTR_ERR(h_dentry);
 		goto out_mnt;
@@ -814,7 +818,8 @@ out:
 	return err;
 }
 
-int aufs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
+int aufs_mkdir(struct user_namespace *userns, struct inode *dir,
+	       struct dentry *dentry, umode_t mode)
 {
 	int err, rerr;
 	aufs_bindex_t bindex;

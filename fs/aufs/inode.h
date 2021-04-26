@@ -124,8 +124,10 @@ int au_ino(struct super_block *sb, aufs_bindex_t bindex, ino_t h_ino,
 struct inode *au_new_inode(struct dentry *dentry, int must_new);
 int au_test_ro(struct super_block *sb, aufs_bindex_t bindex,
 	       struct inode *inode);
-int au_test_h_perm(struct inode *h_inode, int mask);
-int au_test_h_perm_sio(struct inode *h_inode, int mask);
+int au_test_h_perm(struct user_namespace *h_userns, struct inode *h_inode,
+		   int mask);
+int au_test_h_perm_sio(struct user_namespace *h_userns, struct inode *h_inode,
+		       int mask);
 
 static inline int au_wh_ino(struct super_block *sb, aufs_bindex_t bindex,
 			    ino_t h_ino, unsigned int d_type, ino_t *ino)
@@ -200,18 +202,21 @@ int au_h_path_getattr(struct dentry *dentry, struct inode *inode, int force,
 /* i_op_add.c */
 int au_may_add(struct dentry *dentry, aufs_bindex_t bindex,
 	       struct dentry *h_parent, int isdir);
-int aufs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
-	       dev_t dev);
-int aufs_symlink(struct inode *dir, struct dentry *dentry, const char *symname);
-int aufs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
-		bool want_excl);
+int aufs_mknod(struct user_namespace *userns, struct inode *dir,
+	       struct dentry *dentry, umode_t mode, dev_t dev);
+int aufs_symlink(struct user_namespace *userns, struct inode *dir,
+		 struct dentry *dentry, const char *symname);
+int aufs_create(struct user_namespace *userns, struct inode *dir,
+		struct dentry *dentry, umode_t mode, bool want_excl);
 struct vfsub_aopen_args;
 int au_aopen_or_create(struct inode *dir, struct dentry *dentry,
 		       struct vfsub_aopen_args *args);
-int aufs_tmpfile(struct inode *dir, struct dentry *dentry, umode_t mode);
+int aufs_tmpfile(struct user_namespace *userns, struct inode *dir,
+		 struct dentry *dentry, umode_t mode);
 int aufs_link(struct dentry *src_dentry, struct inode *dir,
 	      struct dentry *dentry);
-int aufs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode);
+int aufs_mkdir(struct user_namespace *userns, struct inode *dir,
+	       struct dentry *dentry, umode_t mode);
 
 /* i_op_del.c */
 int au_wr_dir_need_wh(struct dentry *dentry, int isdir, aufs_bindex_t *bcpup);
@@ -222,9 +227,10 @@ int aufs_rmdir(struct inode *dir, struct dentry *dentry);
 
 /* i_op_ren.c */
 int au_wbr(struct dentry *dentry, aufs_bindex_t btgt);
-int aufs_rename(struct inode *src_dir, struct dentry *src_dentry,
-		struct inode *dir, struct dentry *dentry,
-		unsigned int flags);
+int aufs_rename(struct user_namespace *userns,
+		struct inode *_src_dir, struct dentry *_src_dentry,
+		struct inode *_dst_dir, struct dentry *_dst_dentry,
+		unsigned int _flags);
 
 /* iinfo.c */
 struct inode *au_h_iptr(struct inode *inode, aufs_bindex_t bindex);
@@ -294,19 +300,20 @@ AuStubVoid(au_plink_half_refresh, struct super_block *sb, aufs_bindex_t br_id);
 
 #ifdef CONFIG_AUFS_XATTR
 /* xattr.c */
-int au_cpup_xattr(struct dentry *h_dst, struct dentry *h_src, int ignore_flags,
+int au_cpup_xattr(struct path *h_dst, struct path *h_src, int ignore_flags,
 		  unsigned int verbose);
 ssize_t aufs_listxattr(struct dentry *dentry, char *list, size_t size);
 void au_xattr_init(struct super_block *sb);
 #else
-AuStubInt0(au_cpup_xattr, struct dentry *h_dst, struct dentry *h_src,
+AuStubInt0(au_cpup_xattr, struct path *h_dst, struct path *h_src,
 	   int ignore_flags, unsigned int verbose);
 AuStubVoid(au_xattr_init, struct super_block *sb);
 #endif
 
 #ifdef CONFIG_FS_POSIX_ACL
 struct posix_acl *aufs_get_acl(struct inode *inode, int type);
-int aufs_set_acl(struct inode *inode, struct posix_acl *acl, int type);
+int aufs_set_acl(struct user_namespace *userns, struct inode *inode,
+		 struct posix_acl *acl, int type);
 #endif
 
 #if IS_ENABLED(CONFIG_AUFS_XATTR) || IS_ENABLED(CONFIG_FS_POSIX_ACL)

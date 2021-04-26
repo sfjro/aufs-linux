@@ -133,6 +133,11 @@ static inline struct dentry *au_br_dentry(struct au_branch *br)
 	return br->br_path.dentry;
 }
 
+static inline struct user_namespace *au_br_userns(struct au_branch *br)
+{
+	return mnt_user_ns(br->br_path.mnt);
+}
+
 static inline struct super_block *au_br_sb(struct au_branch *br)
 {
 	return au_br_mnt(br)->mnt_sb;
@@ -289,6 +294,12 @@ static inline
 struct vfsmount *au_sbr_mnt(struct super_block *sb, aufs_bindex_t bindex)
 {
 	return au_br_mnt(au_sbr(sb, bindex));
+}
+
+static inline
+struct user_namespace *au_sbr_userns(struct super_block *sb, aufs_bindex_t bindex)
+{
+	return au_br_userns(au_sbr(sb, bindex));
 }
 
 static inline
