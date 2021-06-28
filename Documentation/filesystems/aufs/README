@@ -182,6 +182,16 @@ Make sure you have git-checkout'ed the correct branch.
 For aufs5-linux tree,
 - enable CONFIG_AUFS_FS.
 - set other aufs configurations if necessary.
+- for aufs5.13 and later
+  Because aufs is not only an ordinary filesystem (callee of VFS), but
+  also a caller of VFS functions for branch filesystems, subclassing of
+  the internal locks for LOCKDEP is necessary. LOCKDEP is a debugging
+  feature of linux kernel. If you enable CONFIG_LOCKDEP, then you will
+  need to customize some LOCKDEP numbers. Here are what I use on my
+  test environment.
+	CONFIG_LOCKDEP_BITS=21
+	CONFIG_LOCKDEP_CHAINS_BITS=21
+	CONFIG_LOCKDEP_STACK_TRACE_BITS=24
 
 For aufs5-standalone tree,
 There are several ways to build.
@@ -259,14 +269,6 @@ optional. When you meet some problems, they will help you.
   duplication of inode number, which is important for backup tools and
   other utilities. When you find aufs XINO files for tmpfs branch
   growing too much, try this patch.
-- lockdep-debug.patch
-  Because aufs is not only an ordinary filesystem (callee of VFS), but
-  also a caller of VFS functions for branch filesystems, subclassing of
-  the internal locks for LOCKDEP is necessary. LOCKDEP is a debugging
-  feature of linux kernel. If you enable CONFIG_LOCKDEP, then you will
-  need to apply this debug patch to expand several constant values.
-  If you don't know what LOCKDEP is, then you don't have apply this
-  patch.
 
 
 4. Usage
