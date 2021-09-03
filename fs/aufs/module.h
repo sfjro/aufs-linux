@@ -84,7 +84,7 @@ static inline void au_kfree_small(const void *p)
 static inline int au_kmidx_sub(size_t sz, size_t new_sz)
 {
 #ifndef CONFIG_SLOB
-	return kmalloc_index(sz) - kmalloc_index(new_sz);
+	return __kmalloc_index(sz, false) - __kmalloc_index(new_sz, false);
 #else
 	return -1; /* SLOB is untested */
 #endif
