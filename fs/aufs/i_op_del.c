@@ -81,6 +81,9 @@ int au_may_del(struct dentry *dentry, aufs_bindex_t bindex,
 	umode_t h_mode;
 	struct dentry *h_dentry, *h_latest;
 	struct inode *h_inode;
+	struct path h_ppath;
+	struct super_block *sb;
+	struct au_branch *br;
 	struct user_namespace *h_userns;
 
 	h_dentry = au_h_dptr(dentry, bindex);
@@ -119,13 +122,17 @@ int au_may_del(struct dentry *dentry, aufs_bindex_t bindex,
 	 * let's try heavy test.
 	 */
 	err = -EACCES;
-	h_userns = au_sbr_userns(dentry->d_sb, bindex);
-	if (unlikely(!au_opt_test(au_mntflags(dentry->d_sb), DIRPERM1)
+	sb = dentry->d_sb;
+	br = au_sbr(sb, bindex);
+	h_userns = au_sbr_userns(sb, bindex);
+	if (unlikely(!au_opt_test(au_mntflags(sb), DIRPERM1)
 		     && au_test_h_perm(h_userns, d_inode(h_parent),
 				       MAY_EXEC | MAY_WRITE)))
 		goto out;
 
-	h_latest = au_sio_lkup_one(h_userns, &dentry->d_name, h_parent);
+	h_ppath.dentry = h_parent;
+	h_ppath.mnt = au_br_mnt(br);
+	h_latest = au_sio_lkup_one(h_userns, &dentry->d_name, &h_ppath);
 	err = -EIO;
 	if (IS_ERR(h_latest))
 		goto out;
