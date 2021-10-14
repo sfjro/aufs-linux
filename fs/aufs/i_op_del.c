@@ -124,7 +124,7 @@ int au_may_del(struct dentry *dentry, aufs_bindex_t bindex,
 	err = -EACCES;
 	sb = dentry->d_sb;
 	br = au_sbr(sb, bindex);
-	h_userns = au_sbr_userns(sb, bindex);
+	h_userns = au_br_userns(br);
 	if (unlikely(!au_opt_test(au_mntflags(sb), DIRPERM1)
 		     && au_test_h_perm(h_userns, d_inode(h_parent),
 				       MAY_EXEC | MAY_WRITE)))
