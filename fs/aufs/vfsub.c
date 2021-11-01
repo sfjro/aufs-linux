@@ -664,9 +664,7 @@ int vfsub_trunc(struct path *h_path, loff_t length, unsigned int attr,
 	lockdep_off();
 	sb_start_write(h_sb);
 	lockdep_on();
-	err = locks_verify_truncate(h_inode, h_file, length);
-	if (!err)
-		err = security_path_truncate(h_path);
+	err = security_path_truncate(h_path);
 	if (!err) {
 		h_userns = mnt_user_ns(h_path->mnt);
 		lockdep_off();

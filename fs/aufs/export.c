@@ -781,14 +781,8 @@ static int aufs_commit_metadata(struct inode *inode)
 	f = h_inode->i_sb->s_export_op->commit_metadata;
 	if (f)
 		err = f(h_inode);
-	else {
-		struct writeback_control wbc = {
-			.sync_mode	= WB_SYNC_ALL,
-			.nr_to_write	= 0 /* metadata only */
-		};
-
-		err = sync_inode(h_inode, &wbc);
-	}
+	else
+		err = sync_inode_metadata(h_inode, /*wait*/1);
 
 	au_cpup_attr_timesizes(inode);
 	ii_write_unlock(inode);
