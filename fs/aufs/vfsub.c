@@ -24,13 +24,13 @@ int vfsub_test_mntns(struct vfsmount *mnt, struct super_block *h_sb)
 }
 #endif
 
-int vfsub_sync_filesystem(struct super_block *h_sb, int wait)
+int vfsub_sync_filesystem(struct super_block *h_sb)
 {
 	int err;
 
 	lockdep_off();
 	down_read(&h_sb->s_umount);
-	err = __sync_filesystem(h_sb, wait);
+	err = sync_filesystem(h_sb);
 	up_read(&h_sb->s_umount);
 	lockdep_on();
 
