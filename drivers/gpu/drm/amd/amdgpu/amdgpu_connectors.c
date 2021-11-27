@@ -827,6 +827,7 @@ static int amdgpu_connector_vga_get_modes(struct drm_connector *connector)
 
 	amdgpu_connector_get_edid(connector);
 	ret = amdgpu_connector_ddc_get_modes(connector);
+	amdgpu_get_native_mode(connector);
 
 	return ret;
 }
@@ -1414,10 +1415,12 @@ out:
 		pm_runtime_put_autosuspend(connector->dev->dev);
 	}
 
-	drm_dp_set_subconnector_property(&amdgpu_connector->base,
-					 ret,
-					 amdgpu_dig_connector->dpcd,
-					 amdgpu_dig_connector->downstream_ports);
+	if (connector->connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
+	    connector->connector_type == DRM_MODE_CONNECTOR_eDP)
+		drm_dp_set_subconnector_property(&amdgpu_connector->base,
+						 ret,
+						 amdgpu_dig_connector->dpcd,
+						 amdgpu_dig_connector->downstream_ports);
 	return ret;
 }
 
