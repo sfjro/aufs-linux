@@ -58,6 +58,7 @@ struct msm_file_private {
 	int queueid;
 	struct msm_gem_address_space *aspace;
 	struct kref ref;
+	int seqno;
 };
 
 enum msm_mdp_plane_property {
@@ -423,6 +424,11 @@ static inline int msm_dp_display_disable(struct msm_dp *dp,
 {
 	return -EINVAL;
 }
+static inline int msm_dp_display_pre_disable(struct msm_dp *dp,
+					struct drm_encoder *encoder)
+{
+	return -EINVAL;
+}
 static inline void msm_dp_display_mode_set(struct msm_dp *dp,
 				struct drm_encoder *encoder,
 				struct drm_display_mode *mode,
@@ -538,7 +544,7 @@ static inline int align_pitch(int width, int bpp)
 static inline unsigned long timeout_to_jiffies(const ktime_t *timeout)
 {
 	ktime_t now = ktime_get();
-	unsigned long remaining_jiffies;
+	s64 remaining_jiffies;
 
 	if (ktime_compare(*timeout, now) < 0) {
 		remaining_jiffies = 0;
@@ -547,7 +553,7 @@ static inline unsigned long timeout_to_jiffies(const ktime_t *timeout)
 		remaining_jiffies = ktime_divns(rem, NSEC_PER_SEC / HZ);
 	}
 
-	return remaining_jiffies;
+	return clamp(remaining_jiffies, 0LL, (s64)INT_MAX);
 }
 
 #endif /* __MSM_DRV_H__ */

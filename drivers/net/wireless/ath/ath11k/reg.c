@@ -80,6 +80,7 @@ ath11k_reg_notifier(struct wiphy *wiphy, struct regulatory_request *request)
 	 */
 	init_country_param.flags = ALPHA_IS_SET;
 	memcpy(&init_country_param.cc_info.alpha2, request->alpha2, 2);
+	init_country_param.cc_info.alpha2[2] = 0;
 
 	ret = ath11k_wmi_send_init_country_cmd(ar, init_country_param);
 	if (ret)
@@ -197,7 +198,7 @@ static void ath11k_copy_regd(struct ieee80211_regdomain *regd_orig,
 		       sizeof(struct ieee80211_reg_rule));
 }
 
-int ath11k_regd_update(struct ath11k *ar, bool init)
+int ath11k_regd_update(struct ath11k *ar)
 {
 	struct ieee80211_regdomain *regd, *regd_copy = NULL;
 	int ret, regd_len, pdev_id;
@@ -208,7 +209,10 @@ int ath11k_regd_update(struct ath11k *ar, bool init)
 
 	spin_lock_bh(&ab->base_lock);
 
-	if (init) {
+	/* Prefer the latest regd update over default if it's available */
+	if (ab->new_regd[pdev_id]) {
+		regd = ab->new_regd[pdev_id];
+	} else {
 		/* Apply the regd received during init through
 		 * WMI_REG_CHAN_LIST_CC event. In case of failure to
 		 * receive the regd, initialize with a default world
@@ -221,8 +225,6 @@ int ath11k_regd_update(struct ath11k *ar, bool init)
 				    "failed to receive default regd during init\n");
 			regd = (struct ieee80211_regdomain *)&ath11k_world_regd;
 		}
-	} else {
-		regd = ab->new_regd[pdev_id];
 	}
 
 	if (!regd) {
@@ -584,7 +586,6 @@ ath11k_reg_build_regd(struct ath11k_base *ab,
 	if (!tmp_regd)
 		goto ret;
 
-	tmp_regd->n_reg_rules = num_rules;
 	memcpy(tmp_regd->alpha2, reg_info->alpha2, REG_ALPHA2_LEN + 1);
 	memcpy(alpha2, reg_info->alpha2, REG_ALPHA2_LEN + 1);
 	alpha2[2] = '\0';
@@ -597,7 +598,7 @@ ath11k_reg_build_regd(struct ath11k_base *ab,
 	/* Update reg_rules[] below. Firmware is expected to
 	 * send these rules in order(2G rules first and then 5G)
 	 */
-	for (; i < tmp_regd->n_reg_rules; i++) {
+	for (; i < num_rules; i++) {
 		if (reg_info->num_2g_reg_rules &&
 		    (i < reg_info->num_2g_reg_rules)) {
 			reg_rule = reg_info->reg_rules_2g_ptr + i;
@@ -652,6 +653,8 @@ ath11k_reg_build_regd(struct ath11k_base *ab,
 			   flags);
 	}
 
+	tmp_regd->n_reg_rules = i;
+
 	if (intersect) {
 		default_regd = ab->default_regd[reg_info->phy_id];
 
@@ -678,7 +681,7 @@ void ath11k_regd_update_work(struct work_struct *work)
 					 regd_update_work);
 	int ret;
 
-	ret = ath11k_regd_update(ar, false);
+	ret = ath11k_regd_update(ar);
 	if (ret) {
 		/* Firmware has already moved to the new regd. We need
 		 * to maintain channel consistency across FW, Host driver

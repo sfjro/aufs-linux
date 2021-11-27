@@ -337,6 +337,13 @@ static const struct usbmix_name_map bose_companion5_map[] = {
 	{ 0 }	/* terminator */
 };
 
+/* Sennheiser Communications Headset [PC 8], the dB value is reported as -6 negative maximum  */
+static const struct usbmix_dB_map sennheiser_pc8_dB = {-9500, 0};
+static const struct usbmix_name_map sennheiser_pc8_map[] = {
+	{ 9, NULL, .dB = &sennheiser_pc8_dB },
+	{ 0 }   /* terminator */
+};
+
 /*
  * Dell usb dock with ALC4020 codec had a firmware problem where it got
  * screwed up when zero volume is passed; just skip it as a workaround
@@ -522,6 +529,10 @@ static const struct usbmix_ctl_map usbmix_ctl_maps[] = {
 		.map = maya44_map,
 	},
 	{
+		.id = USB_ID(0x2708, 0x0002), /* Audient iD14 */
+		.ignore_ctl_error = 1,
+	},
+	{
 		/* KEF X300A */
 		.id = USB_ID(0x27ac, 0x1000),
 		.map = scms_usb3318_map,
@@ -532,9 +543,23 @@ static const struct usbmix_ctl_map usbmix_ctl_maps[] = {
 		.map = scms_usb3318_map,
 	},
 	{
+		.id = USB_ID(0x30be, 0x0101), /*  Schiit Hel */
+		.ignore_ctl_error = 1,
+	},
+	{
 		/* Bose Companion 5 */
 		.id = USB_ID(0x05a7, 0x1020),
 		.map = bose_companion5_map,
+	},
+	{
+		/* Corsair Virtuoso SE (wired mode) */
+		.id = USB_ID(0x1b1c, 0x0a3d),
+		.map = corsair_virtuoso_map,
+	},
+	{
+		/* Corsair Virtuoso SE (wireless mode) */
+		.id = USB_ID(0x1b1c, 0x0a3e),
+		.map = corsair_virtuoso_map,
 	},
 	{
 		/* Corsair Virtuoso (wired mode) */
@@ -582,6 +607,11 @@ static const struct usbmix_ctl_map usbmix_ctl_maps[] = {
 	{	/* Lenovo ThinkStation P620 Rear */
 		.id = USB_ID(0x17aa, 0x1046),
 		.map = lenovo_p620_rear_map,
+	},
+	{
+		/* Sennheiser Communications Headset [PC 8] */
+		.id = USB_ID(0x1395, 0x0025),
+		.map = sennheiser_pc8_map,
 	},
 	{ 0 } /* terminator */
 };

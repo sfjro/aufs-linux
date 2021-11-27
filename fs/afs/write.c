@@ -184,7 +184,7 @@ int afs_write_end(struct file *file, struct address_space *mapping,
 		write_seqlock(&vnode->cb_lock);
 		i_size = i_size_read(&vnode->vfs_inode);
 		if (maybe_i_size > i_size)
-			i_size_write(&vnode->vfs_inode, maybe_i_size);
+			afs_set_i_size(vnode, maybe_i_size);
 		write_sequnlock(&vnode->cb_lock);
 	}
 
@@ -450,6 +450,7 @@ static int afs_store_data(struct address_space *mapping,
 	afs_op_set_vnode(op, 0, vnode);
 	op->file[0].dv_delta = 1;
 	op->store.mapping = mapping;
+	op->file[0].modification = true;
 	op->store.first = first;
 	op->store.last = last;
 	op->store.first_offset = offset;
