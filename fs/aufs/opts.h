@@ -24,9 +24,9 @@ enum {
 	Opt_dirwh, Opt_rdcache, Opt_rdblk, Opt_rdhash,
 	Opt_rdblk_def, Opt_rdhash_def,
 	Opt_xino, Opt_noxino,
-	Opt_trunc_xino, Opt_trunc_xino_v, Opt_notrunc_xino,
+	Opt_trunc_xino, Opt_trunc_xino_v,
 	Opt_trunc_xino_path, Opt_itrunc_xino,
-	Opt_trunc_xib, Opt_notrunc_xib,
+	Opt_trunc_xib,
 	Opt_shwh, Opt_noshwh,
 	Opt_plink, Opt_noplink, Opt_list_plink,
 	Opt_udba,
@@ -191,6 +191,7 @@ struct au_opt {
 		struct au_opt_wbr_create wbr_create;
 		int			wbr_copyup;
 		unsigned int		fhsm_second;
+		bool			tf; /* generic flag, true or false */
 	};
 };
 
