@@ -19,6 +19,154 @@ struct au_fsctx_opts {
 	struct au_opts opts;
 };
 
+/* stop extra interpretation of errno in mount(8), and strange error messages */
+static int cvt_err(int err)
+{
+	AuTraceErr(err);
+
+	switch (err) {
+	case -ENOENT:
+	case -ENOTDIR:
+	case -EEXIST:
+	case -EIO:
+		err = -EINVAL;
+	}
+	return err;
+}
+
+static int au_fsctx_reconfigure(struct fs_context *fc)
+{
+	int err, do_dx;
+	unsigned int mntflags;
+	struct dentry *root;
+	struct super_block *sb;
+	struct inode *inode;
+	struct au_fsctx_opts *a = fc->fs_private;
+
+	AuDbg("fc %p\n", fc);
+
+	root = fc->root;
+	sb = root->d_sb;
+	err = si_write_lock(sb, AuLock_FLUSH | AuLock_NOPLM);
+	if (!err) {
+		di_write_lock_child(root);
+		err = au_opts_verify(sb, fc->sb_flags, /*pending*/0);
+		aufs_write_unlock(root);
+	}
+
+	inode = d_inode(root);
+	inode_lock(inode);
+	err = si_write_lock(sb, AuLock_FLUSH | AuLock_NOPLM);
+	if (unlikely(err))
+		goto out;
+	di_write_lock_child(root);
+
+	/* au_opts_remount() may return an error */
+	err = au_opts_remount(sb, &a->opts);
+
+	if (au_ftest_opts(a->opts.flags, REFRESH))
+		au_remount_refresh(sb, au_ftest_opts(a->opts.flags,
+						     REFRESH_IDOP));
+
+	if (au_ftest_opts(a->opts.flags, REFRESH_DYAOP)) {
+		mntflags = au_mntflags(sb);
+		do_dx = !!au_opt_test(mntflags, DIO);
+		au_dy_arefresh(do_dx);
+	}
+
+	au_fhsm_wrote_all(sb, /*force*/1); /* ?? */
+	aufs_write_unlock(root);
+
+out:
+	inode_unlock(inode);
+	err = cvt_err(err);
+	AuTraceErr(err);
+
+	return err;
+}
+
+/* ---------------------------------------------------------------------- */
+
+static int au_fsctx_fill_super(struct super_block *sb, struct fs_context *fc)
+{
+	int err;
+	struct au_fsctx_opts *a = fc->fs_private;
+	struct au_sbinfo *sbinfo = a->sbinfo;
+	struct dentry *root;
+	struct inode *inode;
+
+	sbinfo->si_sb = sb;
+	sb->s_fs_info = sbinfo;
+	kobject_get(&sbinfo->si_kobj);
+
+	__si_write_lock(sb);
+	si_pid_set(sb);
+	au_sbilist_add(sb);
+
+	/* all timestamps always follow the ones on the branch */
+	sb->s_flags |= SB_NOATIME | SB_NODIRATIME;
+	sb->s_flags |= SB_I_VERSION; /* do we really need this? */
+	sb->s_op = &aufs_sop;
+	sb->s_d_op = &aufs_dop;
+	sb->s_magic = AUFS_SUPER_MAGIC;
+	sb->s_maxbytes = 0;
+	sb->s_stack_depth = 1;
+	au_export_init(sb);
+	au_xattr_init(sb);
+
+	err = au_alloc_root(sb);
+	if (unlikely(err)) {
+		si_write_unlock(sb);
+		goto out;
+	}
+	root = sb->s_root;
+	inode = d_inode(root);
+	ii_write_lock_parent(inode);
+	aufs_write_unlock(root);
+
+	/* lock vfs_inode first, then aufs. */
+	inode_lock(inode);
+	aufs_write_lock(root);
+	err = au_opts_mount(sb, &a->opts);
+	AuTraceErr(err);
+	if (!err && au_ftest_si(sbinfo, NO_DREVAL)) {
+		sb->s_d_op = &aufs_dop_noreval;
+		/* infofc(fc, "%ps", sb->s_d_op); */
+		pr_info("%ps\n", sb->s_d_op);
+		au_refresh_dop(root, /*force_reval*/0);
+		sbinfo->si_iop_array = aufs_iop_nogetattr;
+		au_refresh_iop(inode, /*force_getattr*/0);
+	}
+	aufs_write_unlock(root);
+	inode_unlock(inode);
+	if (!err)
+		goto out; /* success */
+
+	dput(root);
+	sb->s_root = NULL;
+
+out:
+	if (unlikely(err))
+		kobject_put(&sbinfo->si_kobj);
+	AuTraceErr(err);
+	err = cvt_err(err);
+	AuTraceErr(err);
+	return err;
+}
+
+static int au_fsctx_get_tree(struct fs_context *fc)
+{
+	int err;
+
+	AuDbg("fc %p\n", fc);
+	err = get_tree_nodev(fc, au_fsctx_fill_super);
+
+	AuTraceErr(err);
+	return err;
+}
+
+/* ---------------------------------------------------------------------- */
+
 static void au_fsctx_dump(struct au_opts *opts)
 {
 #ifdef CONFIG_AUFS_DEBUG
@@ -29,6 +177,7 @@ static void au_fsctx_dump(struct au_opts *opts)
 		struct au_opt_mod *mod;
 		struct au_opt_xino *xino;
 		struct au_opt_xino_itrunc *xino_itrunc;
+		struct au_opt_wbr_create *create;
 	} u;
 	struct au_opt *opt;
 
@@ -68,6 +217,19 @@ static void au_fsctx_dump(struct au_opts *opts)
 				  u.add->path.dentry);
 			break;
 
+		case Opt_dirwh:
+			AuDbg("dirwh %d\n", opt->dirwh);
+			break;
+		case Opt_rdcache:
+			AuDbg("rdcache %d\n", opt->rdcache);
+			break;
+		case Opt_rdblk:
+			AuDbg("rdblk %d\n", opt->rdblk);
+			break;
+		case Opt_rdhash:
+			AuDbg("rdhash %u\n", opt->rdhash);
+			break;
+
 		case Opt_xino:
 			u.xino = &opt->xino;
 			AuDbg("xino {%s %pD}\n", u.xino->path, u.xino->file);
@@ -84,6 +246,15 @@ static void au_fsctx_dump(struct au_opts *opts)
 		/* simple true/false flag */
 		au_fsctx_TF(trunc_xino);
 		au_fsctx_TF(trunc_xib);
+		au_fsctx_TF(dirperm1);
+		au_fsctx_TF(plink);
+		au_fsctx_TF(shwh);
+		au_fsctx_TF(dio);
+		au_fsctx_TF(warn_perm);
+		au_fsctx_TF(verbose);
+		au_fsctx_TF(sum);
+		au_fsctx_TF(dirren);
+		au_fsctx_TF(acl);
 #undef au_fsctx_TF
 
 		case Opt_trunc_xino_path:
@@ -95,7 +266,57 @@ static void au_fsctx_dump(struct au_opts *opts)
 		case Opt_noxino:
 			AuLabel(noxino);
 			break;
-		/* re-commit later */
+
+		case Opt_list_plink:
+			AuLabel(list_plink);
+			break;
+		case Opt_udba:
+			AuDbg("udba %d, %s\n",
+				  opt->udba, au_optstr_udba(opt->udba));
+			break;
+		case Opt_diropq_a:
+			AuLabel(diropq_a);
+			break;
+		case Opt_diropq_w:
+			AuLabel(diropq_w);
+			break;
+		case Opt_wsum:
+			AuLabel(wsum);
+			break;
+		case Opt_wbr_create:
+			u.create = &opt->wbr_create;
+			AuDbg("create %d, %s\n", u.create->wbr_create,
+				  au_optstr_wbr_create(u.create->wbr_create));
+			switch (u.create->wbr_create) {
+			case AuWbrCreate_MFSV:
+				fallthrough;
+			case AuWbrCreate_PMFSV:
+				AuDbg("%d sec\n", u.create->mfs_second);
+				break;
+			case AuWbrCreate_MFSRR:
+				fallthrough;
+			case AuWbrCreate_TDMFS:
+				AuDbg("%llu watermark\n",
+					  u.create->mfsrr_watermark);
+				break;
+			case AuWbrCreate_MFSRRV:
+				fallthrough;
+			case AuWbrCreate_TDMFSV:
+				fallthrough;
+			case AuWbrCreate_PMFSRRV:
+				AuDbg("%llu watermark, %d sec\n",
+					  u.create->mfsrr_watermark,
+					  u.create->mfs_second);
+				break;
+			}
+			break;
+		case Opt_wbr_copyup:
+			AuDbg("copyup %d, %s\n", opt->wbr_copyup,
+				  au_optstr_wbr_copyup(opt->wbr_copyup));
+			break;
+		case Opt_fhsm_sec:
+			AuDbg("fhsm_sec %u\n", opt->fhsm_second);
+			break;
 
 		default:
 			AuDbg("type %d\n", opt->type);
@@ -130,6 +351,8 @@ const struct fs_parameter_spec aufs_fsctx_paramspec[] = {
 	fsparam_path("mod", Opt_mod),
 	/* fsparam_string("imod", Opt_imod), */
 
+	fsparam_s32("dirwh", Opt_dirwh),
+
 	fsparam_path("xino", Opt_xino),
 	fsparam_flag("noxino", Opt_noxino),
 	fsparam_flag_no("trunc_xino", Opt_trunc_xino),
@@ -140,7 +363,89 @@ const struct fs_parameter_spec aufs_fsctx_paramspec[] = {
 	/* fsparam_path("zxino", Opt_zxino), */
 	fsparam_flag_no("trunc_xib", Opt_trunc_xib),
 
-	/* re-commit later */
+#ifdef CONFIG_PROC_FS
+	fsparam_flag_no("plink", Opt_plink),
+#else
+	au_ignore_flag("plink", Opt_ignore),
+#endif
+
+#ifdef CONFIG_AUFS_DEBUG
+	fsparam_flag("list_plink", Opt_list_plink),
+#endif
+
+	fsparam_string("udba", Opt_udba),
+
+	fsparam_flag_no("dio", Opt_dio),
+
+#ifdef CONFIG_AUFS_DIRREN
+	fsparam_flag_no("dirren", Opt_dirren),
+#else
+	au_ignore_flag("dirren", Opt_ignore),
+#endif
+
+#ifdef CONFIG_AUFS_FHSM
+	fsparam_s32("fhsm_sec", Opt_fhsm_sec),
+#else
+	fsparam_s32("fhsm_sec", Opt_ignore),
+#endif
+
+	/* always | a | whiteouted | w */
+	fsparam_string("diropq", Opt_diropq),
+
+	fsparam_flag_no("warn_perm", Opt_warn_perm),
+
+#ifdef CONFIG_AUFS_SHWH
+	fsparam_flag_no("shwh", Opt_shwh),
+#else
+	au_ignore_flag("shwh", Opt_err),
+#endif
+
+	fsparam_flag_no("dirperm1", Opt_dirperm1),
+
+	fsparam_flag_no("verbose", Opt_verbose),
+	fsparam_flag("v", Opt_verbose),
+	fsparam_flag("quiet", Opt_noverbose),
+	fsparam_flag("q", Opt_noverbose),
+	/* user-space may handle this */
+	fsparam_flag("silent", Opt_noverbose),
+
+	fsparam_flag_no("sum", Opt_sum),
+	fsparam_flag("wsum", Opt_wsum),
+
+	fsparam_s32("rdcache", Opt_rdcache),
+	/* "def" or s32 */
+	fsparam_string("rdblk", Opt_rdblk),
+	/* "def" or s32 */
+	fsparam_string("rdhash", Opt_rdhash),
+
+	fsparam_string("create", Opt_wbr_create),
+	fsparam_string("create_policy", Opt_wbr_create),
+	fsparam_string("cpup", Opt_wbr_copyup),
+	fsparam_string("copyup", Opt_wbr_copyup),
+	fsparam_string("copyup_policy", Opt_wbr_copyup),
+
+	/* generic VFS flag */
+#ifdef CONFIG_FS_POSIX_ACL
+	fsparam_flag_no("acl", Opt_acl),
+#else
+	au_ignore_flag("acl"),
+#endif
+
+	/* internal use for the scripts */
+	fsparam_string("si", Opt_ignore_silent),
+
+	/* obsoleted, keep them temporary */
+	fsparam_flag("nodlgt", Opt_ignore_silent),
+	fsparam_flag("clean_plink", Opt_ignore),
+	fsparam_string("dirs", Opt_br),
+	fsparam_u32("debug", Opt_ignore),
+	/* "whiteout" or "all" */
+	fsparam_string("delete", Opt_ignore),
+	fsparam_string("imap", Opt_ignore),
+
+	/* temporary workaround, due to old mount(8)? */
+	fsparam_flag("relatime", Opt_ignore_silent),
+
 	{}
 };
 
@@ -563,6 +868,123 @@ static int au_fsctx_parse_param(struct fs_context *fc, struct fs_parameter *para
 						 result.int_32);
 		break;
 
+	case Opt_dirwh:
+		err = 0;
+		opt->dirwh = result.int_32;
+		break;
+
+	case Opt_rdcache:
+		if (unlikely(result.int_32 > AUFS_RDCACHE_MAX)) {
+			errorfc(fc, "rdcache must be smaller than %d",
+				AUFS_RDCACHE_MAX);
+			break;
+		}
+		err = 0;
+		opt->rdcache = result.int_32;
+		break;
+
+	case Opt_rdblk:
+		err = 0;
+		opt->rdblk = AUFS_RDBLK_DEF;
+		if (!strcmp(param->string, "def"))
+			break;
+
+		err = kstrtoint(param->string, 0, &result.int_32);
+		if (unlikely(err)) {
+			errorfc(fc, "bad value in %s", param->key);
+			break;
+		}
+		err = -EINVAL;
+		if (unlikely(result.int_32 < 0
+			     || result.int_32 > KMALLOC_MAX_SIZE)) {
+			errorfc(fc, "bad value in %s", param->key);
+			break;
+		}
+		if (unlikely(result.int_32 && result.int_32 < NAME_MAX)) {
+			errorfc(fc, "rdblk must be larger than %d", NAME_MAX);
+			break;
+		}
+		err = 0;
+		opt->rdblk = result.int_32;
+		break;
+
+	case Opt_rdhash:
+		err = 0;
+		opt->rdhash = AUFS_RDHASH_DEF;
+		if (!strcmp(param->string, "def"))
+			break;
+
+		err = kstrtoint(param->string, 0, &result.int_32);
+		if (unlikely(err)) {
+			errorfc(fc, "bad value in %s", param->key);
+			break;
+		}
+		/* how about zero? */
+		if (result.int_32 < 0
+		    || result.int_32 * sizeof(struct hlist_head)
+		    > KMALLOC_MAX_SIZE) {
+			err = -EINVAL;
+			errorfc(fc, "bad integer in %s", param->key);
+			break;
+		}
+		opt->rdhash = result.int_32;
+		break;
+
+	case Opt_diropq:
+		/*
+		 * As other options, fs/aufs/opts.c can handle these strings by
+		 * match_token().  But "diropq=" is deprecated now and will
+		 * never have other value.  So simple strcmp() is enough here.
+		 */
+		if (!strcmp(param->string, "a") ||
+		    !strcmp(param->string, "always")) {
+			err = 0;
+			opt->type = Opt_diropq_a;
+		} else if (!strcmp(param->string, "w") ||
+			   !strcmp(param->string, "whiteouted")) {
+			err = 0;
+			opt->type = Opt_diropq_w;
+		} else
+			errorfc(fc, "unknown value %s", param->string);
+		break;
+
+	case Opt_udba:
+		opt->udba = au_udba_val(param->string);
+		if (opt->udba >= 0)
+			err = 0;
+		else
+			errorf(fc, "wrong value, %s", param->string);
+		break;
+
+	case Opt_wbr_create:
+		opt->wbr_create.wbr_create
+			= au_wbr_create_val(param->string, &opt->wbr_create);
+		if (opt->wbr_create.wbr_create >= 0)
+			err = 0;
+		else
+			errorf(fc, "wrong value, %s", param->key);
+		break;
+
+	case Opt_wbr_copyup:
+		opt->wbr_copyup = au_wbr_copyup_val(param->string);
+		if (opt->wbr_copyup >= 0)
+			err = 0;
+		else
+			errorfc(fc, "wrong value, %s", param->key);
+		break;
+
+	case Opt_fhsm_sec:
+		if (unlikely(result.int_32 < 0)) {
+			errorfc(fc, "bad integer in %s\n", param->key);
+			break;
+		}
+		err = 0;
+		if (sysaufs_brs)
+			opt->fhsm_second = result.int_32;
+		else
+			warnfc(fc, "ignored %s %s", param->key, param->string);
+		break;
+
 	/* simple true/false flag */
 #define au_fsctx_TF(name)				\
 		case Opt_##name:			\
@@ -571,14 +993,38 @@ static int au_fsctx_parse_param(struct fs_context *fc, struct fs_parameter *para
 			break;
 	au_fsctx_TF(trunc_xino);
 	au_fsctx_TF(trunc_xib);
+	au_fsctx_TF(dirperm1);
+	au_fsctx_TF(plink);
+	au_fsctx_TF(shwh);
+	au_fsctx_TF(dio);
+	au_fsctx_TF(warn_perm);
+	au_fsctx_TF(verbose);
+	au_fsctx_TF(sum);
+	au_fsctx_TF(dirren);
+	au_fsctx_TF(acl);
 #undef au_fsctx_TF
 
+	case Opt_noverbose:
+		err = 0;
+		opt->type = Opt_verbose;
+		opt->tf = false;
+		break;
+
 	case Opt_noxino:
+		fallthrough;
+	case Opt_list_plink:
+		fallthrough;
+	case Opt_wsum:
 		err = 0;
 		break;
 
-	/* re-commit later */
-
+	case Opt_ignore:
+		warnfc(fc, "ignored %s", param->key);
+		fallthrough;
+	case Opt_ignore_silent:
+		a->skipped = 1;
+		err = 0;
+		break;
 	default:
 		a->skipped = 1;
 		err = -ENOPARAM;
@@ -591,6 +1037,10 @@ static int au_fsctx_parse_param(struct fs_context *fc, struct fs_parameter *para
 
 	switch (token) {
 	case Opt_br:
+		fallthrough;
+	case Opt_noverbose:
+		fallthrough;
+	case Opt_diropq:
 		break;
 	default:
 		opt->type = token;
@@ -715,8 +1165,13 @@ static void au_fsctx_free(struct fs_context *fc)
 static const struct fs_context_operations au_fsctx_ops = {
 	.free			= au_fsctx_free,
 	.parse_param		= au_fsctx_parse_param,
-	.parse_monolithic	= au_fsctx_parse_monolithic
-	/* re-commit later */
+	.parse_monolithic	= au_fsctx_parse_monolithic,
+	.get_tree		= au_fsctx_get_tree,
+	.reconfigure		= au_fsctx_reconfigure
+	/*
+	 * nfs4 requires ->dup()? No.
+	 * I don't know what is this ->dup() for.
+	 */
 };
 
 int aufs_fsctx_init(struct fs_context *fc)

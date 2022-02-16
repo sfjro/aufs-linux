@@ -8,7 +8,6 @@
  */
 
 #include <linux/iversion.h>
-#include <linux/namei.h>
 #include "aufs.h"
 
 /*
