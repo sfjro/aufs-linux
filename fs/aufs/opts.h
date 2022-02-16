@@ -12,9 +12,36 @@
 
 #ifdef __KERNEL__
 
+#include <linux/fs_parser.h>
+#include <linux/namei.h>
 #include <linux/path.h>
 
-struct file;
+enum {
+	Opt_br,
+	/* re-commit later */
+	Opt_add, Opt_del, Opt_mod, Opt_append, Opt_prepend,
+	Opt_idel, Opt_imod,
+	Opt_dirwh, Opt_rdcache, Opt_rdblk, Opt_rdhash,
+	Opt_rdblk_def, Opt_rdhash_def,
+	Opt_xino, Opt_noxino,
+	Opt_trunc_xino, Opt_trunc_xino_v, Opt_notrunc_xino,
+	Opt_trunc_xino_path, Opt_itrunc_xino,
+	Opt_trunc_xib, Opt_notrunc_xib,
+	Opt_shwh, Opt_noshwh,
+	Opt_plink, Opt_noplink, Opt_list_plink,
+	Opt_udba,
+	Opt_dio, Opt_nodio,
+	Opt_diropq_a, Opt_diropq_w,
+	Opt_warn_perm, Opt_nowarn_perm,
+	Opt_wbr_copyup, Opt_wbr_create,
+	Opt_fhsm_sec,
+	Opt_verbose, Opt_noverbose,
+	Opt_sum, Opt_nosum, Opt_wsum,
+	Opt_dirperm1, Opt_nodirperm1,
+	Opt_dirren, Opt_nodirren,
+	Opt_acl, Opt_noacl,
+	Opt_tail, Opt_ignore, Opt_ignore_silent, Opt_err
+};
 
 /* ---------------------------------------------------------------------- */
 
@@ -58,6 +85,8 @@ struct file;
 #define AuOptMask_UDBA	(AuOpt_UDBA_NONE \
 			 | AuOpt_UDBA_REVAL \
 			 | AuOpt_UDBA_HNOTIFY)
+
+#define AuOpt_LkupDirFlags	(LOOKUP_FOLLOW | LOOKUP_DIRECTORY)
 
 #define au_opt_test(flags, name)	(flags & AuOpt_##name)
 #define au_opt_set(flags, name) do { \
@@ -110,6 +139,8 @@ enum {
 };
 
 /* ---------------------------------------------------------------------- */
+
+struct file;
 
 struct au_opt_add {
 	aufs_bindex_t	bindex;
@@ -193,12 +224,15 @@ struct au_opts {
 /* ---------------------------------------------------------------------- */
 
 /* opts.c */
+int au_br_perm_val(char *perm);
 void au_optstr_br_perm(au_br_perm_str_t *str, int perm);
 const char *au_optstr_udba(int udba);
 const char *au_optstr_wbr_copyup(int wbr_copyup);
 const char *au_optstr_wbr_create(int wbr_create);
 
 void au_opts_free(struct au_opts *opts);
+int au_opt_add(struct au_opt *opt, char *opt_str, unsigned long sb_flags,
+	       aufs_bindex_t bindex);
 struct super_block;
 int au_opts_parse(struct super_block *sb, char *str, struct au_opts *opts);
 int au_opts_verify(struct super_block *sb, unsigned long sb_flags,
@@ -207,6 +241,10 @@ int au_opts_mount(struct super_block *sb, struct au_opts *opts);
 int au_opts_remount(struct super_block *sb, struct au_opts *opts);
 
 unsigned int au_opt_udba(struct super_block *sb);
+
+/* fsctx.c */
+int aufs_fsctx_init(struct fs_context *fc);
+extern const struct fs_parameter_spec aufs_fsctx_paramspec[];
 
 #endif /* __KERNEL__ */
 #endif /* __AUFS_OPTS_H__ */
