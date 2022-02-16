@@ -16,17 +16,6 @@
 static match_table_t options = {
 	{Opt_dirwh, "dirwh=%d"},
 
-	{Opt_xino, "xino=%s"},
-	{Opt_noxino, "noxino"},
-	{Opt_trunc_xino, "trunc_xino"},
-	{Opt_trunc_xino_v, "trunc_xino_v=%d:%d"},
-	{Opt_notrunc_xino, "notrunc_xino"},
-	{Opt_trunc_xino_path, "trunc_xino=%s"},
-	{Opt_itrunc_xino, "itrunc_xino=%d"},
-	/* {Opt_zxino, "zxino=%s"}, */
-	{Opt_trunc_xib, "trunc_xib"},
-	{Opt_notrunc_xib, "notrunc_xib"},
-
 #ifdef CONFIG_PROC_FS
 	{Opt_plink, "plink"},
 #else
@@ -496,8 +485,6 @@ static void dump_opts(struct au_opts *opts)
 #ifdef CONFIG_AUFS_DEBUG
 	/* reduce stack space */
 	union {
-		struct au_opt_xino *xino;
-		struct au_opt_xino_itrunc *xino_itrunc;
 		struct au_opt_wbr_create *create;
 	} u;
 	struct au_opt *opt;
@@ -522,30 +509,6 @@ static void dump_opts(struct au_opts *opts)
 			break;
 		case Opt_rdhash_def:
 			AuDbg("rdhash_def\n");
-			break;
-		case Opt_xino:
-			u.xino = &opt->xino;
-			AuDbg("xino {%s %pD}\n", u.xino->path, u.xino->file);
-			break;
-		case Opt_trunc_xino:
-			AuLabel(trunc_xino);
-			break;
-		case Opt_notrunc_xino:
-			AuLabel(notrunc_xino);
-			break;
-		case Opt_trunc_xino_path:
-		case Opt_itrunc_xino:
-			u.xino_itrunc = &opt->xino_itrunc;
-			AuDbg("trunc_xino %d\n", u.xino_itrunc->bindex);
-			break;
-		case Opt_noxino:
-			AuLabel(noxino);
-			break;
-		case Opt_trunc_xib:
-			AuLabel(trunc_xib);
-			break;
-		case Opt_notrunc_xib:
-			AuLabel(notrunc_xib);
 			break;
 		case Opt_shwh:
 			AuLabel(shwh);
@@ -657,17 +620,7 @@ static void dump_opts(struct au_opts *opts)
 
 void au_opts_free(struct au_opts *opts)
 {
-	struct au_opt *opt;
-
-	opt = opts->opt;
-	while (opt->type != Opt_tail) {
-		switch (opt->type) {
-		case Opt_xino:
-			fput(opt->xino.file);
-			break;
-		}
-		opt++;
-	}
+	/* empty */
 }
 
 int au_opt_add(struct au_opt *opt, char *opt_str, unsigned long sb_flags,
@@ -706,70 +659,6 @@ out:
 	return err;
 }
 
-static int au_opts_parse_xino(struct super_block *sb, struct au_opt_xino *xino,
-			      substring_t args[])
-{
-	int err;
-	struct file *file;
-
-	file = au_xino_create(sb, args[0].from, /*silent*/0, /*wbrtop*/0);
-	err = PTR_ERR(file);
-	if (IS_ERR(file))
-		goto out;
-
-	err = -EINVAL;
-	if (unlikely(file->f_path.dentry->d_sb == sb)) {
-		fput(file);
-		pr_err("%s must be outside\n", args[0].from);
-		goto out;
-	}
-
-	err = 0;
-	xino->file = file;
-	xino->path = args[0].from;
-
-out:
-	return err;
-}
-
-static int noinline_for_stack
-au_opts_parse_xino_itrunc_path(struct super_block *sb,
-			       struct au_opt_xino_itrunc *xino_itrunc,
-			       substring_t args[])
-{
-	int err;
-	aufs_bindex_t bbot, bindex;
-	struct path path;
-	struct dentry *root;
-
-	err = vfsub_kern_path(args[0].from, AuOpt_LkupDirFlags, &path);
-	if (unlikely(err)) {
-		pr_err("lookup failed %s (%d)\n", args[0].from, err);
-		goto out;
-	}
-
-	xino_itrunc->bindex = -1;
-	root = sb->s_root;
-	aufs_read_lock(root, AuLock_FLUSH);
-	bbot = au_sbbot(sb);
-	for (bindex = 0; bindex <= bbot; bindex++) {
-		if (au_h_dptr(root, bindex) == path.dentry) {
-			xino_itrunc->bindex = bindex;
-			break;
-		}
-	}
-	aufs_read_unlock(root, !AuLock_IR);
-	path_put(&path);
-
-	if (unlikely(xino_itrunc->bindex < 0)) {
-		pr_err("no such branch %s\n", args[0].from);
-		err = -EINVAL;
-	}
-
-out:
-	return err;
-}
-
 /* called without aufs lock */
 int au_opts_parse(struct super_block *sb, char *str, struct au_opts *opts)
 {
@@ -781,7 +670,6 @@ int au_opts_parse(struct super_block *sb, char *str, struct au_opts *opts)
 	char *opt_str;
 	/* reduce the stack space */
 	union {
-		struct au_opt_xino_itrunc *xino_itrunc;
 		struct au_opt_wbr_create *create;
 	} u;
 	struct {
@@ -804,37 +692,6 @@ int au_opts_parse(struct super_block *sb, char *str, struct au_opts *opts)
 		skipped = 0;
 		token = match_token(opt_str, options, a->args);
 		switch (token) {
-		case Opt_xino:
-			err = au_opts_parse_xino(sb, &opt->xino, a->args);
-			if (!err)
-				opt->type = token;
-			break;
-
-		case Opt_trunc_xino_path:
-			err = au_opts_parse_xino_itrunc_path
-				(sb, &opt->xino_itrunc, a->args);
-			if (!err)
-				opt->type = token;
-			break;
-
-		case Opt_itrunc_xino:
-			u.xino_itrunc = &opt->xino_itrunc;
-			if (unlikely(match_int(&a->args[0], &n))) {
-				pr_err("bad integer in %s\n", opt_str);
-				break;
-			}
-			u.xino_itrunc->bindex = n;
-			aufs_read_lock(root, AuLock_FLUSH);
-			if (n < 0 || au_sbbot(sb) < n) {
-				pr_err("out of bounds, %d\n", n);
-				aufs_read_unlock(root, !AuLock_IR);
-				break;
-			}
-			aufs_read_unlock(root, !AuLock_IR);
-			err = 0;
-			opt->type = token;
-			break;
-
 		case Opt_dirwh:
 			if (unlikely(match_int(&a->args[0], &opt->dirwh)))
 				break;
@@ -885,11 +742,6 @@ int au_opts_parse(struct super_block *sb, char *str, struct au_opts *opts)
 			opt->type = token;
 			break;
 
-		case Opt_trunc_xino:
-		case Opt_notrunc_xino:
-		case Opt_noxino:
-		case Opt_trunc_xib:
-		case Opt_notrunc_xib:
 		case Opt_shwh:
 		case Opt_noshwh:
 		case Opt_dirperm1:
@@ -1159,10 +1011,10 @@ static int au_opt_simple(struct super_block *sb, struct au_opt *opt,
 		break;
 
 	case Opt_trunc_xino:
-		au_opt_set(sbinfo->si_mntflags, TRUNC_XINO);
-		break;
-	case Opt_notrunc_xino:
-		au_opt_clr(sbinfo->si_mntflags, TRUNC_XINO);
+		if (opt->tf)
+			au_opt_set(sbinfo->si_mntflags, TRUNC_XINO);
+		else
+			au_opt_clr(sbinfo->si_mntflags, TRUNC_XINO);
 		break;
 
 	case Opt_trunc_xino_path:
@@ -1174,10 +1026,10 @@ static int au_opt_simple(struct super_block *sb, struct au_opt *opt,
 		break;
 
 	case Opt_trunc_xib:
-		au_fset_opts(opts->flags, TRUNC_XIB);
-		break;
-	case Opt_notrunc_xib:
-		au_fclr_opts(opts->flags, TRUNC_XIB);
+		if (opt->tf)
+			au_fset_opts(opts->flags, TRUNC_XIB);
+		else
+			au_fclr_opts(opts->flags, TRUNC_XIB);
 		break;
 
 	case Opt_dirren:
@@ -1286,12 +1138,9 @@ static int au_opt_xino(struct super_block *sb, struct au_opt *opt,
 	case Opt_xino:
 		err = au_xino_set(sb, &opt->xino,
 				  !!au_ftest_opts(opts->flags, REMOUNT));
-		if (unlikely(err))
-			break;
-
-		*opt_xino = &opt->xino;
+		if (!err)
+			*opt_xino = &opt->xino;
 		break;
-
 	case Opt_noxino:
 		au_xino_clr(sb);
 		*opt_xino = (void *)-1;
