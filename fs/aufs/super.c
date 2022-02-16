@@ -910,10 +910,11 @@ static int aufs_fill_super(struct super_block *sb, void *raw_data,
 	opts.max_opt = PAGE_SIZE / sizeof(*opts.opt);
 	opts.sb_flags = sb->s_flags;
 
-	err = au_si_alloc(sb);
-	if (unlikely(err))
+	sbinfo = au_si_alloc(sb);
+	AuDebugOn(!sbinfo);
+	err = PTR_ERR(sbinfo);
+	if (unlikely(IS_ERR(sbinfo)))
 		goto out_opts;
-	sbinfo = au_sbi(sb);
 
 	/* all timestamps always follow the ones on the branch */
 	sb->s_flags |= SB_NOATIME | SB_NODIRATIME;
@@ -1000,26 +1001,42 @@ out:
 static void aufs_kill_sb(struct super_block *sb)
 {
 	struct au_sbinfo *sbinfo;
+	struct dentry *root;
 
 	sbinfo = au_sbi(sb);
-	if (sbinfo) {
-		au_sbilist_del(sb);
-		aufs_write_lock(sb->s_root);
-		au_fhsm_fin(sb);
-		if (sbinfo->si_wbr_create_ops->fin)
-			sbinfo->si_wbr_create_ops->fin(sb);
-		if (au_opt_test(sbinfo->si_mntflags, UDBA_HNOTIFY)) {
-			au_opt_set_udba(sbinfo->si_mntflags, UDBA_NONE);
-			au_remount_refresh(sb, /*do_idop*/0);
-		}
-		if (au_opt_test(sbinfo->si_mntflags, PLINK))
-			au_plink_put(sb, /*verbose*/1);
-		au_xino_clr(sb);
-		au_dr_opt_flush(sb);
-		sbinfo->si_sb = NULL;
-		aufs_write_unlock(sb->s_root);
-		au_nwt_flush(&sbinfo->si_nowait);
+	if (!sbinfo)
+		goto out;
+
+	au_sbilist_del(sb);
+
+	root = sb->s_root;
+	if (root)
+		aufs_write_lock(root);
+	else
+		__si_write_lock(sb);
+
+	au_fhsm_fin(sb);
+	if (sbinfo->si_wbr_create_ops->fin)
+		sbinfo->si_wbr_create_ops->fin(sb);
+	if (au_opt_test(sbinfo->si_mntflags, UDBA_HNOTIFY)) {
+		au_opt_set_udba(sbinfo->si_mntflags, UDBA_NONE);
+		au_remount_refresh(sb, /*do_idop*/0);
 	}
+	if (au_opt_test(sbinfo->si_mntflags, PLINK))
+		au_plink_put(sb, /*verbose*/1);
+	au_xino_clr(sb);
+	if (root)
+		au_dr_opt_flush(sb);
+
+	if (root)
+		aufs_write_unlock(root);
+	else
+		__si_write_unlock(sb);
+
+	sbinfo->si_sb = NULL;
+	au_nwt_flush(&sbinfo->si_nowait);
+
+out:
 	kill_anon_super(sb);
 }
 

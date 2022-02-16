@@ -7,43 +7,13 @@
  * mount options/flags
  */
 
-#include <linux/namei.h>
 #include <linux/types.h> /* a distribution requires */
 #include <linux/parser.h>
 #include "aufs.h"
 
 /* ---------------------------------------------------------------------- */
 
-enum {
-	Opt_br,
-	Opt_add, Opt_del, Opt_mod, Opt_append, Opt_prepend,
-	Opt_idel, Opt_imod,
-	Opt_dirwh, Opt_rdcache, Opt_rdblk, Opt_rdhash,
-	Opt_rdblk_def, Opt_rdhash_def,
-	Opt_xino, Opt_noxino,
-	Opt_trunc_xino, Opt_trunc_xino_v, Opt_notrunc_xino,
-	Opt_trunc_xino_path, Opt_itrunc_xino,
-	Opt_trunc_xib, Opt_notrunc_xib,
-	Opt_shwh, Opt_noshwh,
-	Opt_plink, Opt_noplink, Opt_list_plink,
-	Opt_udba,
-	Opt_dio, Opt_nodio,
-	Opt_diropq_a, Opt_diropq_w,
-	Opt_warn_perm, Opt_nowarn_perm,
-	Opt_wbr_copyup, Opt_wbr_create,
-	Opt_fhsm_sec,
-	Opt_verbose, Opt_noverbose,
-	Opt_sum, Opt_nosum, Opt_wsum,
-	Opt_dirperm1, Opt_nodirperm1,
-	Opt_dirren, Opt_nodirren,
-	Opt_acl, Opt_noacl,
-	Opt_tail, Opt_ignore, Opt_ignore_silent, Opt_err
-};
-
 static match_table_t options = {
-	{Opt_br, "br=%s"},
-	{Opt_br, "br:%s"},
-
 	{Opt_add, "add=%d:%s"},
 	{Opt_add, "add:%d:%s"},
 	{Opt_add, "ins=%d:%s"},
@@ -170,8 +140,6 @@ static match_table_t options = {
 
 	{Opt_err, NULL}
 };
-
-/* ---------------------------------------------------------------------- */
 
 static const char *au_parser_pattern(int val, match_table_t tbl)
 {
@@ -304,7 +272,7 @@ out:
 	return q - str->a;
 }
 
-static int noinline_for_stack br_perm_val(char *perm)
+int au_br_perm_val(char *perm)
 {
 	int val, bad, sz;
 	char *p;
@@ -539,8 +507,6 @@ const char *au_optstr_wbr_copyup(int wbr_copyup)
 
 /* ---------------------------------------------------------------------- */
 
-static const int lkup_dirflags = LOOKUP_FOLLOW | LOOKUP_DIRECTORY;
-
 static void dump_opts(struct au_opts *opts)
 {
 #ifdef CONFIG_AUFS_DEBUG
@@ -766,8 +732,8 @@ void au_opts_free(struct au_opts *opts)
 	}
 }
 
-static int opt_add(struct au_opt *opt, char *opt_str, unsigned long sb_flags,
-		   aufs_bindex_t bindex)
+int au_opt_add(struct au_opt *opt, char *opt_str, unsigned long sb_flags,
+	       aufs_bindex_t bindex)
 {
 	int err;
 	struct au_opt_add *add = &opt->add;
@@ -780,10 +746,10 @@ static int opt_add(struct au_opt *opt, char *opt_str, unsigned long sb_flags,
 	if (p) {
 		*p++ = 0;
 		if (*p)
-			add->perm = br_perm_val(p);
+			add->perm = au_br_perm_val(p);
 	}
 
-	err = vfsub_kern_path(add->pathname, lkup_dirflags, &add->path);
+	err = vfsub_kern_path(add->pathname, AuOpt_LkupDirFlags, &add->path);
 	if (!err) {
 		if (!p) {
 			add->perm = AuBrPerm_RO;
@@ -809,7 +775,7 @@ static int au_opts_parse_del(struct au_opt_del *del, substring_t args[])
 	del->pathname = args[0].from;
 	AuDbg("del path %s\n", del->pathname);
 
-	err = vfsub_kern_path(del->pathname, lkup_dirflags, &del->h_path);
+	err = vfsub_kern_path(del->pathname, AuOpt_LkupDirFlags, &del->h_path);
 	if (unlikely(err))
 		pr_err("lookup failed %s (%d)\n", del->pathname, err);
 
@@ -857,13 +823,13 @@ au_opts_parse_mod(struct au_opt_mod *mod, substring_t args[])
 	}
 
 	*p++ = 0;
-	err = vfsub_kern_path(mod->path, lkup_dirflags, &path);
+	err = vfsub_kern_path(mod->path, AuOpt_LkupDirFlags, &path);
 	if (unlikely(err)) {
 		pr_err("lookup failed %s (%d)\n", mod->path, err);
 		goto out;
 	}
 
-	mod->perm = br_perm_val(p);
+	mod->perm = au_br_perm_val(p);
 	AuDbg("mod path %s, perm 0x%x, %s\n", mod->path, mod->perm, p);
 	mod->h_root = dget(path.dentry);
 	path_put(&path);
@@ -935,7 +901,7 @@ au_opts_parse_xino_itrunc_path(struct super_block *sb,
 	struct path path;
 	struct dentry *root;
 
-	err = vfsub_kern_path(args[0].from, lkup_dirflags, &path);
+	err = vfsub_kern_path(args[0].from, AuOpt_LkupDirFlags, &path);
 	if (unlikely(err)) {
 		pr_err("lookup failed %s (%d)\n", args[0].from, err);
 		goto out;
@@ -997,40 +963,26 @@ int au_opts_parse(struct super_block *sb, char *str, struct au_opts *opts)
 		skipped = 0;
 		token = match_token(opt_str, options, a->args);
 		switch (token) {
-		case Opt_br:
-			err = 0;
-			while (!err && (opt_str = strsep(&a->args[0].from, ":"))
-			       && *opt_str) {
-				err = opt_add(opt, opt_str, opts->sb_flags,
-					      bindex++);
-				if (unlikely(!err && ++opt > opt_tail)) {
-					err = -E2BIG;
-					break;
-				}
-				opt->type = Opt_tail;
-				skipped = 1;
-			}
-			break;
 		case Opt_add:
 			if (unlikely(match_int(&a->args[0], &n))) {
 				pr_err("bad integer in %s\n", opt_str);
 				break;
 			}
 			bindex = n;
-			err = opt_add(opt, a->args[1].from, opts->sb_flags,
-				      bindex);
+			err = au_opt_add(opt, a->args[1].from, opts->sb_flags,
+					 bindex);
 			if (!err)
 				opt->type = token;
 			break;
 		case Opt_append:
-			err = opt_add(opt, a->args[0].from, opts->sb_flags,
-				      /*dummy bindex*/1);
+			err = au_opt_add(opt, a->args[0].from, opts->sb_flags,
+					 /*dummy bindex*/1);
 			if (!err)
 				opt->type = token;
 			break;
 		case Opt_prepend:
-			err = opt_add(opt, a->args[0].from, opts->sb_flags,
-				      /*bindex*/0);
+			err = au_opt_add(opt, a->args[0].from, opts->sb_flags,
+					 /*bindex*/0);
 			if (!err)
 				opt->type = token;
 			break;
