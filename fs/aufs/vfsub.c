@@ -8,7 +8,6 @@
  */
 
 #include <linux/mnt_namespace.h>
-#include <linux/namei.h>
 #include <linux/nsproxy.h>
 #include <linux/security.h>
 #include <linux/splice.h>
