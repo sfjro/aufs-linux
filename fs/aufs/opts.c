@@ -14,22 +14,6 @@
 /* ---------------------------------------------------------------------- */
 
 static match_table_t options = {
-	{Opt_add, "add=%d:%s"},
-	{Opt_add, "add:%d:%s"},
-	{Opt_add, "ins=%d:%s"},
-	{Opt_add, "ins:%d:%s"},
-	{Opt_append, "append=%s"},
-	{Opt_append, "append:%s"},
-	{Opt_prepend, "prepend=%s"},
-	{Opt_prepend, "prepend:%s"},
-
-	{Opt_del, "del=%s"},
-	{Opt_del, "del:%s"},
-	/* {Opt_idel, "idel:%d"}, */
-	{Opt_mod, "mod=%s"},
-	{Opt_mod, "mod:%s"},
-	/* {Opt_imod, "imod:%d:%s"}, */
-
 	{Opt_dirwh, "dirwh=%d"},
 
 	{Opt_xino, "xino=%s"},
@@ -512,9 +496,6 @@ static void dump_opts(struct au_opts *opts)
 #ifdef CONFIG_AUFS_DEBUG
 	/* reduce stack space */
 	union {
-		struct au_opt_add *add;
-		struct au_opt_del *del;
-		struct au_opt_mod *mod;
 		struct au_opt_xino *xino;
 		struct au_opt_xino_itrunc *xino_itrunc;
 		struct au_opt_wbr_create *create;
@@ -524,36 +505,6 @@ static void dump_opts(struct au_opts *opts)
 	opt = opts->opt;
 	while (opt->type != Opt_tail) {
 		switch (opt->type) {
-		case Opt_add:
-			u.add = &opt->add;
-			AuDbg("add {b%d, %s, 0x%x, %p}\n",
-				  u.add->bindex, u.add->pathname, u.add->perm,
-				  u.add->path.dentry);
-			break;
-		case Opt_del:
-		case Opt_idel:
-			u.del = &opt->del;
-			AuDbg("del {%s, %p}\n",
-			      u.del->pathname, u.del->h_path.dentry);
-			break;
-		case Opt_mod:
-		case Opt_imod:
-			u.mod = &opt->mod;
-			AuDbg("mod {%s, 0x%x, %p}\n",
-				  u.mod->path, u.mod->perm, u.mod->h_root);
-			break;
-		case Opt_append:
-			u.add = &opt->add;
-			AuDbg("append {b%d, %s, 0x%x, %p}\n",
-				  u.add->bindex, u.add->pathname, u.add->perm,
-				  u.add->path.dentry);
-			break;
-		case Opt_prepend:
-			u.add = &opt->add;
-			AuDbg("prepend {b%d, %s, 0x%x, %p}\n",
-				  u.add->bindex, u.add->pathname, u.add->perm,
-				  u.add->path.dentry);
-			break;
 		case Opt_dirwh:
 			AuDbg("dirwh %d\n", opt->dirwh);
 			break;
@@ -711,19 +662,6 @@ void au_opts_free(struct au_opts *opts)
 	opt = opts->opt;
 	while (opt->type != Opt_tail) {
 		switch (opt->type) {
-		case Opt_add:
-		case Opt_append:
-		case Opt_prepend:
-			path_put(&opt->add.path);
-			break;
-		case Opt_del:
-		case Opt_idel:
-			path_put(&opt->del.h_path);
-			break;
-		case Opt_mod:
-		case Opt_imod:
-			dput(opt->mod.h_root);
-			break;
 		case Opt_xino:
 			fput(opt->xino.file);
 			break;
@@ -767,103 +705,6 @@ int au_opt_add(struct au_opt *opt, char *opt_str, unsigned long sb_flags,
 out:
 	return err;
 }
-
-static int au_opts_parse_del(struct au_opt_del *del, substring_t args[])
-{
-	int err;
-
-	del->pathname = args[0].from;
-	AuDbg("del path %s\n", del->pathname);
-
-	err = vfsub_kern_path(del->pathname, AuOpt_LkupDirFlags, &del->h_path);
-	if (unlikely(err))
-		pr_err("lookup failed %s (%d)\n", del->pathname, err);
-
-	return err;
-}
-
-#if 0 /* reserved for future use */
-static int au_opts_parse_idel(struct super_block *sb, aufs_bindex_t bindex,
-			      struct au_opt_del *del, substring_t args[])
-{
-	int err;
-	struct dentry *root;
-
-	err = -EINVAL;
-	root = sb->s_root;
-	aufs_read_lock(root, AuLock_FLUSH);
-	if (bindex < 0 || au_sbbot(sb) < bindex) {
-		pr_err("out of bounds, %d\n", bindex);
-		goto out;
-	}
-
-	err = 0;
-	del->h_path.dentry = dget(au_h_dptr(root, bindex));
-	del->h_path.mnt = mntget(au_sbr_mnt(sb, bindex));
-
-out:
-	aufs_read_unlock(root, !AuLock_IR);
-	return err;
-}
-#endif
-
-static int noinline_for_stack
-au_opts_parse_mod(struct au_opt_mod *mod, substring_t args[])
-{
-	int err;
-	struct path path;
-	char *p;
-
-	err = -EINVAL;
-	mod->path = args[0].from;
-	p = strchr(mod->path, '=');
-	if (unlikely(!p)) {
-		pr_err("no permission %s\n", args[0].from);
-		goto out;
-	}
-
-	*p++ = 0;
-	err = vfsub_kern_path(mod->path, AuOpt_LkupDirFlags, &path);
-	if (unlikely(err)) {
-		pr_err("lookup failed %s (%d)\n", mod->path, err);
-		goto out;
-	}
-
-	mod->perm = au_br_perm_val(p);
-	AuDbg("mod path %s, perm 0x%x, %s\n", mod->path, mod->perm, p);
-	mod->h_root = dget(path.dentry);
-	path_put(&path);
-
-out:
-	return err;
-}
-
-#if 0 /* reserved for future use */
-static int au_opts_parse_imod(struct super_block *sb, aufs_bindex_t bindex,
-			      struct au_opt_mod *mod, substring_t args[])
-{
-	int err;
-	struct dentry *root;
-
-	err = -EINVAL;
-	root = sb->s_root;
-	aufs_read_lock(root, AuLock_FLUSH);
-	if (bindex < 0 || au_sbbot(sb) < bindex) {
-		pr_err("out of bounds, %d\n", bindex);
-		goto out;
-	}
-
-	err = 0;
-	mod->perm = br_perm_val(args[1].from);
-	AuDbg("mod path %s, perm 0x%x, %s\n",
-	      mod->path, mod->perm, args[1].from);
-	mod->h_root = dget(au_h_dptr(root, bindex));
-
-out:
-	aufs_read_unlock(root, !AuLock_IR);
-	return err;
-}
-#endif
 
 static int au_opts_parse_xino(struct super_block *sb, struct au_opt_xino *xino,
 			      substring_t args[])
@@ -963,63 +804,6 @@ int au_opts_parse(struct super_block *sb, char *str, struct au_opts *opts)
 		skipped = 0;
 		token = match_token(opt_str, options, a->args);
 		switch (token) {
-		case Opt_add:
-			if (unlikely(match_int(&a->args[0], &n))) {
-				pr_err("bad integer in %s\n", opt_str);
-				break;
-			}
-			bindex = n;
-			err = au_opt_add(opt, a->args[1].from, opts->sb_flags,
-					 bindex);
-			if (!err)
-				opt->type = token;
-			break;
-		case Opt_append:
-			err = au_opt_add(opt, a->args[0].from, opts->sb_flags,
-					 /*dummy bindex*/1);
-			if (!err)
-				opt->type = token;
-			break;
-		case Opt_prepend:
-			err = au_opt_add(opt, a->args[0].from, opts->sb_flags,
-					 /*bindex*/0);
-			if (!err)
-				opt->type = token;
-			break;
-		case Opt_del:
-			err = au_opts_parse_del(&opt->del, a->args);
-			if (!err)
-				opt->type = token;
-			break;
-#if 0 /* reserved for future use */
-		case Opt_idel:
-			del->pathname = "(indexed)";
-			if (unlikely(match_int(&args[0], &n))) {
-				pr_err("bad integer in %s\n", opt_str);
-				break;
-			}
-			err = au_opts_parse_idel(sb, n, &opt->del, a->args);
-			if (!err)
-				opt->type = token;
-			break;
-#endif
-		case Opt_mod:
-			err = au_opts_parse_mod(&opt->mod, a->args);
-			if (!err)
-				opt->type = token;
-			break;
-#ifdef IMOD /* reserved for future use */
-		case Opt_imod:
-			u.mod->path = "(indexed)";
-			if (unlikely(match_int(&a->args[0], &n))) {
-				pr_err("bad integer in %s\n", opt_str);
-				break;
-			}
-			err = au_opts_parse_imod(sb, n, &opt->mod, a->args);
-			if (!err)
-				opt->type = token;
-			break;
-#endif
 		case Opt_xino:
 			err = au_opts_parse_xino(sb, &opt->xino, a->args);
 			if (!err)
