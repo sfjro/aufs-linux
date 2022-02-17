@@ -43,10 +43,10 @@ void au_si_free(struct kobject *kobj)
 	au_kfree_rcu(sbinfo);
 }
 
-int au_si_alloc(struct super_block *sb)
+struct au_sbinfo *au_si_alloc(struct super_block *sb)
 {
-	int err, i;
 	struct au_sbinfo *sbinfo;
+	int err, i;
 
 	err = -ENOMEM;
 	sbinfo = kzalloc(sizeof(*sbinfo), GFP_NOFS);
@@ -111,16 +111,18 @@ int au_si_alloc(struct super_block *sb)
 
 	/* leave other members for sysaufs and si_mnt. */
 	sbinfo->si_sb = sb;
-	sb->s_fs_info = sbinfo;
-	si_pid_set(sb);
-	return 0; /* success */
+	if (sb) {
+		sb->s_fs_info = sbinfo;
+		si_pid_set(sb);
+	}
+	return sbinfo; /* success */
 
 out_br:
 	au_kfree_try_rcu(sbinfo->si_branch);
 out_sbinfo:
 	au_kfree_rcu(sbinfo);
 out:
-	return err;
+	return ERR_PTR(err);
 }
 
 int au_sbr_realloc(struct au_sbinfo *sbinfo, int nbr, int may_shrink)
