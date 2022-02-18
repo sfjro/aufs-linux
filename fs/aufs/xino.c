@@ -196,7 +196,7 @@ struct file *au_xino_create(struct super_block *sb, char *fpath, int silent,
 	}
 
 	err = -EINVAL;
-	if (unlikely(sb == d->d_sb)) {
+	if (unlikely(sb && sb == d->d_sb)) {
 		if (!silent)
 			pr_err("%s must be outside\n", fpath);
 		goto out;
