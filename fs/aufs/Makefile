@@ -10,7 +10,7 @@ ccflags-y += -DDEBUG
 ccflags-y += -include ${srctree}/include/uapi/linux/aufs_type.h
 
 obj-$(CONFIG_AUFS_FS) += aufs.o
-aufs-y := module.o sbinfo.o super.o branch.o xino.o sysaufs.o opts.o \
+aufs-y := module.o sbinfo.o super.o branch.o xino.o sysaufs.o opts.o fsctx.o \
 	wkq.o vfsub.o dcsub.o \
 	cpup.o whout.o wbr_policy.o \
 	dinfo.o dentry.o \

@@ -248,8 +248,8 @@ static inline unsigned char au_do_ftest_si(struct au_sbinfo *sbi,
 /* ---------------------------------------------------------------------- */
 
 /* super.c */
-extern struct file_system_type aufs_fs_type;
 struct inode *au_iget_locked(struct super_block *sb, ino_t ino);
+
 typedef unsigned long long (*au_arraycb_t)(struct super_block *sb, void *array,
 					   unsigned long long max, void *arg);
 void *au_array_alloc(unsigned long long *hint, au_arraycb_t cb,
@@ -257,9 +257,14 @@ void *au_array_alloc(unsigned long long *hint, au_arraycb_t cb,
 struct inode **au_iarray_alloc(struct super_block *sb, unsigned long long *max);
 void au_iarray_free(struct inode **a, unsigned long long max);
 
+void au_remount_refresh(struct super_block *sb, unsigned int do_idop);
+extern const struct super_operations aufs_sop;
+int au_alloc_root(struct super_block *sb);
+extern struct file_system_type aufs_fs_type;
+
 /* sbinfo.c */
 void au_si_free(struct kobject *kobj);
-int au_si_alloc(struct super_block *sb);
+struct au_sbinfo *au_si_alloc(struct super_block *sb);
 int au_sbr_realloc(struct au_sbinfo *sbinfo, int nbr, int may_shrink);
 
 unsigned int au_sigen_inc(struct super_block *sb);
