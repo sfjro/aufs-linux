@@ -9,7 +9,6 @@
 
 #include <linux/exportfs.h>
 #include <linux/fs_struct.h>
-#include <linux/namei.h>
 #include <linux/nsproxy.h>
 #include <linux/random.h>
 #include <linux/writeback.h>
