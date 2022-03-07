@@ -1091,7 +1091,7 @@ static int au_fsctx_parse_monolithic(struct fs_context *fc, void *data)
 
 	str = data;
 	AuDbg("str %s\n", str);
-	while (1) {
+	while (str) {
 		u = is_colonopt(str);
 		if (u)
 			str[u] = '=';
