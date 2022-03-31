@@ -2945,7 +2945,10 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 	struct vm_area_struct *vma;
 	unsigned long populate = 0;
 	unsigned long ret = -EINVAL;
-	struct file *file, *prfile;
+	struct file *file;
+#if IS_ENABLED(CONFIG_AUFS_FS)
+	struct file *prfile;
+#endif
 
 	pr_warn_once("%s (%d) uses deprecated remap_file_pages() syscall. See Documentation/vm/remap_file_pages.rst.\n",
 		     current->comm, current->pid);
@@ -3001,6 +3004,7 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 	if (vma->vm_flags & VM_LOCKED)
 		flags |= MAP_LOCKED;
 
+#if IS_ENABLED(CONFIG_AUFS_FS)
 	vma_get_file(vma);
 	file = vma->vm_file;
 	prfile = vma->vm_prfile;
@@ -3022,6 +3026,12 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 	fput(file);
 	if (prfile)
 		fput(prfile);
+#else
+	file = get_file(vma->vm_file);
+	ret = do_mmap(vma->vm_file, start, size,
+			prot, flags, pgoff, &populate, NULL);
+	fput(file);
+#endif /* CONFIG_AUFS_FS */
 out:
 	mmap_write_unlock(mm);
 	if (populate)
