@@ -1801,6 +1801,7 @@ static inline void unmap_shared_mapping_range(struct address_space *mapping,
 	unmap_mapping_range(mapping, holebegin, holelen, 0);
 }
 
+#if IS_ENABLED(CONFIG_AUFS_FS)
 extern void vma_do_file_update_time(struct vm_area_struct *, const char[], int);
 extern struct file *vma_do_pr_or_file(struct vm_area_struct *, const char[],
 				      int);
@@ -1822,6 +1823,20 @@ extern void vmr_do_fput(struct vm_region *, const char[], int);
 							  __LINE__)
 #define vmr_fput(region)		vmr_do_fput(region, __func__, __LINE__)
 #endif /* !CONFIG_MMU */
+
+#else
+
+#define vma_file_update_time(vma)	file_update_time((vma)->vm_file)
+#define vma_pr_or_file(vma)		(vma)->vm_file
+#define vma_get_file(vma)		get_file((vma)->vm_file)
+#define vma_fput(vma)			fput((vma)->vm_file)
+
+#ifndef CONFIG_MMU
+#define vmr_pr_or_file(region)		(region)->vm_file
+#define vmr_fput(region)		fput((region)->vm_file)
+#endif /* !CONFIG_MMU */
+
+#endif /* CONFIG_AUFS_FS */
 
 extern int access_process_vm(struct task_struct *tsk, unsigned long addr,
 		void *buf, int len, unsigned int gup_flags);
