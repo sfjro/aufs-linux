@@ -21,7 +21,7 @@ static struct inode *aufs_alloc_inode(struct super_block *sb __maybe_unused)
 {
 	struct au_icntnr *c;
 
-	c = au_cache_alloc_icntnr();
+	c = au_cache_alloc_icntnr(sb);
 	if (c) {
 		au_icntnr_init(c);
 		inode_set_iversion(&c->vfs_inode, 1); /* sigen(sb); */

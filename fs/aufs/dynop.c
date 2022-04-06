@@ -165,13 +165,12 @@ static void dy_aop(struct au_dykey *key, const void *h_op,
 	DySetAop(writepage);
 	DySetAopForce(readpage);	/* force */
 	DySetAop(writepages);
-	DySetAop(set_page_dirty);
-	DySetAop(readpages);
+	DySetAop(dirty_folio);
+	DySetAop(invalidate_folio);
 	DySetAop(readahead);
 	DySetAop(write_begin);
 	DySetAop(write_end);
 	DySetAop(bmap);
-	DySetAop(invalidatepage);
 	DySetAop(releasepage);
 	DySetAop(freepage);
 	/* this one will be changed according to an aufs mount option */
@@ -179,7 +178,7 @@ static void dy_aop(struct au_dykey *key, const void *h_op,
 	DySetAop(migratepage);
 	DySetAop(isolate_page);
 	DySetAop(putback_page);
-	DySetAop(launder_page);
+	DySetAop(launder_folio);
 	DySetAop(is_partially_uptodate);
 	DySetAop(is_dirty_writeback);
 	DySetAop(error_remove_page);
