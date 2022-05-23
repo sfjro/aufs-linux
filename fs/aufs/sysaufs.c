@@ -24,6 +24,7 @@ struct attribute *sysaufs_si_attrs[] = {
 	&sysaufs_si_attr_xi_path.attr,
 	NULL,
 };
+ATTRIBUTE_GROUPS(sysaufs_si);
 
 static const struct sysfs_ops au_sbi_ops = {
 	.show   = sysaufs_si_show
@@ -32,7 +33,7 @@ static const struct sysfs_ops au_sbi_ops = {
 static struct kobj_type au_sbi_ktype = {
 	.release	= au_si_free,
 	.sysfs_ops	= &au_sbi_ops,
-	.default_attrs	= sysaufs_si_attrs
+	.default_groups	= sysaufs_si_groups
 };
 
 /* ---------------------------------------------------------------------- */

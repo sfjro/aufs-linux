@@ -122,9 +122,11 @@ extern struct kmem_cache *au_cache[AuCache_Last];
 	kmem_cache_create(#type, sizeof(struct type), \
 			  __alignof__(struct type), AuCacheFlags, ctor)
 
-#define AuCacheFuncs(name, index)					\
+#define AuCacheFuncAlloc(name, index)					\
 	static inline struct au_##name *au_cache_alloc_##name(void)	\
-	{ return kmem_cache_alloc(au_cache[AuCache_##index], GFP_NOFS); } \
+	{ return kmem_cache_alloc(au_cache[AuCache_##index], GFP_NOFS); }
+
+#define AuCacheFuncs(name, index)					\
 	static inline void au_cache_free_##name##_norcu(struct au_##name *p) \
 	{ kmem_cache_free(au_cache[AuCache_##index], p); }		\
 									\
@@ -141,12 +143,24 @@ extern struct kmem_cache *au_cache[AuCache_Last];
 		au_cache_free_##name##_rcu(p); }
 
 AuCacheFuncs(dinfo, DINFO);
+AuCacheFuncAlloc(dinfo, DINFO);
+
 AuCacheFuncs(icntnr, ICNTNR);
+static inline struct au_icntnr *au_cache_alloc_icntnr(struct super_block *sb)
+{ return alloc_inode_sb(sb, au_cache[AuCache_ICNTNR], GFP_NOFS); }
+
 AuCacheFuncs(finfo, FINFO);
+AuCacheFuncAlloc(finfo, FINFO);
+
 AuCacheFuncs(vdir, VDIR);
+AuCacheFuncAlloc(vdir, VDIR);
+
 AuCacheFuncs(vdir_dehstr, DEHSTR);
+AuCacheFuncAlloc(vdir_dehstr, DEHSTR);
+
 #ifdef CONFIG_AUFS_HNOTIFY
 AuCacheFuncs(hnotify, HNOTIFY);
+AuCacheFuncAlloc(hnotify, HNOTIFY);
 #endif
 
 #endif /* __KERNEL__ */

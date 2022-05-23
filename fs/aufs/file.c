@@ -788,10 +788,9 @@ static int aufs_write_end(struct file *file, struct address_space *mapping,
 static int aufs_writepage(struct page *page, struct writeback_control *wbc)
 { AuUnsupport(); return 0; }
 
-static int aufs_set_page_dirty(struct page *page)
-{ AuUnsupport(); return 0; }
-static void aufs_invalidatepage(struct page *page, unsigned int offset,
-				unsigned int length)
+static bool aufs_dirty_folio(struct address_space *mapping, struct folio *folio)
+{ AuUnsupport(); return true; }
+static void aufs_invalidate_folio(struct folio *folio, size_t offset, size_t len)
 { AuUnsupport(); }
 static int aufs_releasepage(struct page *page, gfp_t gfp)
 { AuUnsupport(); return 0; }
@@ -804,12 +803,11 @@ static bool aufs_isolate_page(struct page *page, isolate_mode_t mode)
 { AuUnsupport(); return true; }
 static void aufs_putback_page(struct page *page)
 { AuUnsupport(); }
-static int aufs_launder_page(struct page *page)
+static int aufs_launder_folio(struct folio *folio)
 { AuUnsupport(); return 0; }
-static int aufs_is_partially_uptodate(struct page *page,
-				      unsigned long from,
-				      unsigned long count)
-{ AuUnsupport(); return 0; }
+static bool aufs_is_partially_uptodate(struct folio *folio, size_t from,
+				      size_t count)
+{ AuUnsupport(); return true; }
 static void aufs_is_dirty_writeback(struct page *page, bool *dirty,
 				    bool *writeback)
 { AuUnsupport(); }
@@ -829,18 +827,18 @@ const struct address_space_operations aufs_aop = {
 #ifdef CONFIG_AUFS_DEBUG
 	.writepage		= aufs_writepage,
 	/* no writepages, because of writepage */
-	.set_page_dirty		= aufs_set_page_dirty,
+	.dirty_folio		= aufs_dirty_folio,
 	/* no readpages, because of readpage */
 	.write_begin		= aufs_write_begin,
 	.write_end		= aufs_write_end,
 	/* no bmap, no block device */
-	.invalidatepage		= aufs_invalidatepage,
+	.invalidate_folio	= aufs_invalidate_folio,
 	.releasepage		= aufs_releasepage,
 	/* is fallback_migrate_page ok? */
 	/* .migratepage		= aufs_migratepage, */
 	.isolate_page		= aufs_isolate_page,
 	.putback_page		= aufs_putback_page,
-	.launder_page		= aufs_launder_page,
+	.launder_folio		= aufs_launder_folio,
 	.is_partially_uptodate	= aufs_is_partially_uptodate,
 	.is_dirty_writeback	= aufs_is_dirty_writeback,
 	.error_remove_page	= aufs_error_remove_page,
