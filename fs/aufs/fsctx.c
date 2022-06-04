@@ -428,7 +428,7 @@ const struct fs_parameter_spec aufs_fsctx_paramspec[] = {
 #ifdef CONFIG_FS_POSIX_ACL
 	fsparam_flag_no("acl", Opt_acl),
 #else
-	au_ignore_flag("acl"),
+	au_ignore_flag("acl", Opt_ignore),
 #endif
 
 	/* internal use for the scripts */
