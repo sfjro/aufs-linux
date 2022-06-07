@@ -226,7 +226,8 @@ static int au_hfsn_init_br(struct au_branch *br, int perm)
 		goto out;
 
 	err = 0;
-	group = fsnotify_alloc_group(&au_hfsn_ops);
+	group = fsnotify_alloc_group(&au_hfsn_ops,
+				     /*flags - not for userspace*/0);
 	if (IS_ERR(group)) {
 		err = PTR_ERR(group);
 		pr_err("fsnotify_alloc_group() failed, %d\n", err);
