@@ -1266,7 +1266,7 @@ static int au_br_mod_files_ro(struct super_block *sb, aufs_bindex_t bindex)
 		 * file_release_write() for each file, because the branch
 		 * attribute in aufs world is totally different from the native
 		 * fs rw/ro mode.
-		*/
+		 */
 		/* fi_read_lock(file); */
 		hfile = &au_fi(file)->fi_htop;
 		hf = hfile->hf_file;
