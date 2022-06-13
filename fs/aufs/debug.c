@@ -34,7 +34,7 @@ static int param_atomic_t_get(char *buffer, const struct kernel_param *kp)
 	return sprintf(buffer, "%d", atomic_read(a));
 }
 
-static struct kernel_param_ops param_ops_atomic_t = {
+static const struct kernel_param_ops param_ops_atomic_t = {
 	.set = param_atomic_t_set,
 	.get = param_atomic_t_get
 	/* void (*free)(void *arg) */
