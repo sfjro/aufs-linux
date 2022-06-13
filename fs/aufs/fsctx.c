@@ -990,7 +990,7 @@ static int au_fsctx_parse_param(struct fs_context *fc, struct fs_parameter *para
 		case Opt_##name:			\
 			err = 0;			\
 			opt->tf = !result.negated;	\
-			break;
+			break
 	au_fsctx_TF(trunc_xino);
 	au_fsctx_TF(trunc_xib);
 	au_fsctx_TF(dirperm1);
@@ -1067,7 +1067,7 @@ static inline unsigned int is_colonopt(char *str)
 {
 #define do_test(name)					\
 	if (!strncmp(str, name ":", sizeof(name)))	\
-		return sizeof(name) - 1;
+		return sizeof(name) - 1
 	do_test("br");
 	do_test("add");
 	do_test("ins");
