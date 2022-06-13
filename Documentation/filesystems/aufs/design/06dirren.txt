@@ -64,7 +64,7 @@ The "inode-number list of directories" is a regular file which contains
 simply the inode-numbers on the branch. The file is created or updated
 in removing the branch, and loaded in adding the branch. Its lifetime is
 equal to the branch.
-The list is refered in lookup, and when the current target inode is
+The list is referred in lookup, and when the current target inode is
 found in the list, the aufs tries loading the "detailed info per
 directory" and get the changed and valid name of the dir.
 
