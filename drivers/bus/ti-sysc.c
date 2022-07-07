@@ -2443,12 +2443,11 @@ static void sysc_reinit_modules(struct sysc_soc_info *soc)
 	struct sysc_module *module;
 	struct list_head *pos;
 	struct sysc *ddata;
-	int error = 0;
 
 	list_for_each(pos, &sysc_soc->restored_modules) {
 		module = list_entry(pos, struct sysc_module, node);
 		ddata = module->ddata;
-		error = sysc_reinit_module(ddata, ddata->enabled);
+		sysc_reinit_module(ddata, ddata->enabled);
 	}
 }
 
@@ -3131,13 +3130,27 @@ static int sysc_check_disabled_devices(struct sysc *ddata)
  */
 static int sysc_check_active_timer(struct sysc *ddata)
 {
+	int error;
+
 	if (ddata->cap->type != TI_SYSC_OMAP2_TIMER &&
 	    ddata->cap->type != TI_SYSC_OMAP4_TIMER)
 		return 0;
 
+	/*
+	 * Quirk for omap3 beagleboard revision A to B4 to use gpt12.
+	 * Revision C and later are fixed with commit 23885389dbbb ("ARM:
+	 * dts: Fix timer regression for beagleboard revision c"). This all
+	 * can be dropped if we stop supporting old beagleboard revisions
+	 * A to B4 at some point.
+	 */
+	if (sysc_soc->soc == SOC_3430)
+		error = -ENXIO;
+	else
+		error = -EBUSY;
+
 	if ((ddata->cfg.quirks & SYSC_QUIRK_NO_RESET_ON_INIT) &&
 	    (ddata->cfg.quirks & SYSC_QUIRK_NO_IDLE))
-		return -ENXIO;
+		return error;
 
 	return 0;
 }
