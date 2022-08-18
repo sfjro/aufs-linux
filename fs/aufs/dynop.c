@@ -175,9 +175,7 @@ static void dy_aop(struct au_dykey *key, const void *h_op,
 	DySetAop(free_folio);
 	/* this one will be changed according to an aufs mount option */
 	DySetAop(direct_IO);
-	DySetAop(migratepage);
-	DySetAop(isolate_page);
-	DySetAop(putback_page);
+	DySetAop(migrate_folio);
 	DySetAop(launder_folio);
 	DySetAop(is_partially_uptodate);
 	DySetAop(is_dirty_writeback);
