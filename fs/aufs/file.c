@@ -795,14 +795,10 @@ static void aufs_invalidate_folio(struct folio *folio, size_t offset, size_t len
 static bool aufs_release_folio(struct folio *folio, gfp_t gfp)
 { AuUnsupport(); return true; }
 #if 0 /* called by memory compaction regardless file */
-static int aufs_migratepage(struct address_space *mapping, struct page *newpage,
-			    struct page *page, enum migrate_mode mode)
+static int aufs_migrate_folio(struct address_space *mapping, struct folio *dst,
+			      struct folio *src, enum migrate_mode mode)
 { AuUnsupport(); return 0; }
 #endif
-static bool aufs_isolate_page(struct page *page, isolate_mode_t mode)
-{ AuUnsupport(); return true; }
-static void aufs_putback_page(struct page *page)
-{ AuUnsupport(); }
 static int aufs_launder_folio(struct folio *folio)
 { AuUnsupport(); return 0; }
 static bool aufs_is_partially_uptodate(struct folio *folio, size_t from,
@@ -837,9 +833,7 @@ const struct address_space_operations aufs_aop = {
 	.invalidate_folio	= aufs_invalidate_folio,
 	.release_folio		= aufs_release_folio,
 	/* is fallback_migrate_page ok? */
-	/* .migratepage		= aufs_migratepage, */
-	.isolate_page		= aufs_isolate_page,
-	.putback_page		= aufs_putback_page,
+	/* .migrate_folio	= aufs_migrate_folio, */
 	.launder_folio		= aufs_launder_folio,
 	.is_partially_uptodate	= aufs_is_partially_uptodate,
 	.is_dirty_writeback	= aufs_is_dirty_writeback,

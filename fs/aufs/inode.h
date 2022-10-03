@@ -327,7 +327,7 @@ struct au_sxattr {
 	union {
 		struct {
 			const char	*name;
-			const void	*value;
+			void		*value;
 			size_t		size;
 			int		flags;
 		} set;
