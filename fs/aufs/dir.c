@@ -60,8 +60,7 @@ static void au_do_dir_ts(void *arg)
 	if (d_really_is_negative(a->dentry))
 		goto out;
 	/* no dir->i_mutex lock */
-	si_read_lock(sb, /*flags*/0); /* noflush */
-	di_write_lock(a->dentry, AuLsc_DI_CHILD);
+	aufs_read_lock(a->dentry, AuLock_DW); /* noflush */
 
 	dir = d_inode(a->dentry);
 	btop = au_ibtop(dir);
@@ -85,20 +84,19 @@ static void au_do_dir_ts(void *arg)
 	if (err)
 		goto out_unlock;
 	hdir = au_hi(dir, btop);
-	inode_lock_nested(hdir->hi_inode, AuLsc_I_PARENT);
+	au_hn_inode_lock_nested(hdir, AuLsc_I_PARENT);
 	h_dir = au_h_iptr(dir, btop);
 	if (h_dir->i_nlink
 	    && timespec64_compare(&h_dir->i_mtime, &dt.dt_mtime) < 0) {
 		dt.dt_h_path = h_path;
 		au_dtime_revert(&dt);
 	}
-	inode_unlock(hdir->hi_inode);
+	au_hn_inode_unlock(hdir);
 	vfsub_mnt_drop_write(h_path.mnt);
 	au_cpup_attr_timesizes(dir);
 
 out_unlock:
-	di_write_unlock(a->dentry);
-	si_read_unlock(sb);
+	aufs_read_unlock(a->dentry, AuLock_DW);
 out:
 	dput(a->dentry);
 	au_nwt_done(&au_sbi(sb)->si_nowait);
