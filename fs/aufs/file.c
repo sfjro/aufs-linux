@@ -7,7 +7,11 @@
  * handling file/dir, and address_space operation
  */
 
+#ifdef CONFIG_AUFS_DEBUG
+#include <linux/migrate.h>
+#endif
 #include <linux/fsnotify.h>
+#include <linux/pagemap.h>
 #include "aufs.h"
 
 /* drop flags for writing */
@@ -78,3 +82,86 @@ out_br:
 out:
 	return h_file;
 }
+
+/* ---------------------------------------------------------------------- */
+
+/* cf. aufs_nopage() */
+/* for madvise(2) */
+static int aufs_read_folio(struct file *file __maybe_unused, struct folio *folio)
+{
+	folio_unlock(folio);
+	return 0;
+}
+
+/* it will never be called, but necessary to support O_DIRECT */
+static ssize_t aufs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
+{ BUG(); return 0; }
+
+/* they will never be called. */
+#ifdef CONFIG_AUFS_DEBUG
+static int aufs_write_begin(struct file *file, struct address_space *mapping,
+			    loff_t pos, unsigned len,
+			    struct page **pagep, void **fsdata)
+{ AuUnsupport(); return 0; }
+static int aufs_write_end(struct file *file, struct address_space *mapping,
+			  loff_t pos, unsigned len, unsigned copied,
+			  struct page *page, void *fsdata)
+{ AuUnsupport(); return 0; }
+static int aufs_writepage(struct page *page, struct writeback_control *wbc)
+{ AuUnsupport(); return 0; }
+
+static bool aufs_dirty_folio(struct address_space *mapping, struct folio *folio)
+{ AuUnsupport(); return true; }
+static void aufs_invalidate_folio(struct folio *folio, size_t offset, size_t len)
+{ AuUnsupport(); }
+static bool aufs_release_folio(struct folio *folio, gfp_t gfp)
+{ AuUnsupport(); return true; }
+#if 0 /* called by memory compaction regardless file */
+static int aufs_migrate_folio(struct address_space *mapping, struct folio *dst,
+			      struct folio *src, enum migrate_mode mode)
+{ AuUnsupport(); return 0; }
+#endif
+static int aufs_launder_folio(struct folio *folio)
+{ AuUnsupport(); return 0; }
+static bool aufs_is_partially_uptodate(struct folio *folio, size_t from,
+				      size_t count)
+{ AuUnsupport(); return true; }
+static void aufs_is_dirty_writeback(struct folio *folio, bool *dirty,
+				    bool *writeback)
+{ AuUnsupport(); }
+static int aufs_error_remove_page(struct address_space *mapping,
+				  struct page *page)
+{ AuUnsupport(); return 0; }
+static int aufs_swap_activate(struct swap_info_struct *sis, struct file *file,
+			      sector_t *span)
+{ AuUnsupport(); return 0; }
+static void aufs_swap_deactivate(struct file *file)
+{ AuUnsupport(); }
+static int aufs_swap_rw(struct kiocb *iocb, struct iov_iter *iter)
+{ AuUnsupport(); return 0; }
+#endif /* CONFIG_AUFS_DEBUG */
+
+const struct address_space_operations aufs_aop = {
+	.read_folio		= aufs_read_folio,
+	.direct_IO		= aufs_direct_IO,
+#ifdef CONFIG_AUFS_DEBUG
+	.writepage		= aufs_writepage,
+	/* no writepages, because of writepage */
+	.dirty_folio		= aufs_dirty_folio,
+	/* no readpages, because of readpage */
+	.write_begin		= aufs_write_begin,
+	.write_end		= aufs_write_end,
+	/* no bmap, no block device */
+	.invalidate_folio	= aufs_invalidate_folio,
+	.release_folio		= aufs_release_folio,
+	/* is fallback_migrate_page ok? */
+	/* .migrate_folio	= aufs_migrate_folio, */
+	.launder_folio		= aufs_launder_folio,
+	.is_partially_uptodate	= aufs_is_partially_uptodate,
+	.is_dirty_writeback	= aufs_is_dirty_writeback,
+	.error_remove_page	= aufs_error_remove_page,
+	.swap_activate		= aufs_swap_activate,
+	.swap_deactivate	= aufs_swap_deactivate,
+	.swap_rw		= aufs_swap_rw
+#endif /* CONFIG_AUFS_DEBUG */
+};
