@@ -9,7 +9,6 @@
  */
 
 #include <linux/module.h>
-#include <linux/sched/signal.h>
 #include "aufs.h"
 
 /* internal workqueue named AUFS_WKQ_NAME */

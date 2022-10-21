@@ -7,7 +7,6 @@
  * pseudo-link
  */
 
-#include <linux/cred.h>
 #include "aufs.h"
 
 /*

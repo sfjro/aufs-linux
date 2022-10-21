@@ -7,7 +7,6 @@
  * whiteout for logical deletion and opaque directory
  */
 
-#include <linux/cred.h>
 #include "aufs.h"
 
 #define WH_MASK			0444

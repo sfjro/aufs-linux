@@ -7,7 +7,6 @@
  * inode functions
  */
 
-#include <linux/cred.h>
 #include "aufs.h"
 
 struct inode *au_igrab(struct inode *inode)
