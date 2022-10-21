@@ -19,6 +19,7 @@
 enum {
 	Opt_br,
 	Opt_add,
+	Opt_rdcache, Opt_rdblk, Opt_rdhash,
 	Opt_xino, Opt_noxino,
 	Opt_trunc_xino, Opt_trunc_xino_v,
 	Opt_trunc_xino_path, Opt_itrunc_xino,
@@ -138,6 +139,9 @@ struct au_opt {
 		struct au_opt_xino	xino;
 		struct au_opt_xino_itrunc xino_itrunc;
 		struct au_opt_add	add;
+		int			rdcache;
+		unsigned int		rdblk;
+		unsigned int		rdhash;
 		int			udba;
 		struct au_opt_wbr_create wbr_create;
 		int			wbr_copyup;
@@ -147,8 +151,11 @@ struct au_opt {
 };
 
 /* opts flags */
+#define AuOpts_REMOUNT		1
+#define AuOpts_REFRESH		(1 << 1)
 #define AuOpts_TRUNC_XIB	(1 << 2)
 #define AuOpts_REFRESH_DYAOP	(1 << 3)
+#define AuOpts_REFRESH_DOP	(1 << 4)
 #define au_ftest_opts(flags, name)	((flags) & AuOpts_##name)
 #define au_fset_opts(flags, name) \
 	do { (flags) |= AuOpts_##name; } while (0)
@@ -182,6 +189,7 @@ struct super_block;
 int au_opts_verify(struct super_block *sb, unsigned long sb_flags,
 		   unsigned int pending);
 int au_opts_mount(struct super_block *sb, struct au_opts *opts);
+int au_opts_remount(struct super_block *sb, struct au_opts *opts);
 
 unsigned int au_opt_udba(struct super_block *sb);
 

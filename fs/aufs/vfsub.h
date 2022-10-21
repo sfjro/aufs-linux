@@ -37,6 +37,10 @@ enum {
 
 /* ---------------------------------------------------------------------- */
 
+int vfsub_sync_filesystem(struct super_block *h_sb);
+
+/* ---------------------------------------------------------------------- */
+
 struct file *vfsub_dentry_open(struct path *path, int flags);
 struct file *vfsub_filp_open(const char *path, int oflags, int mode);
 int vfsub_kern_path(const char *name, unsigned int flags, struct path *path);
