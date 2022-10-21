@@ -24,7 +24,6 @@
 
 #include <linux/seq_file.h>
 #include <linux/statfs.h>
-#include <linux/uaccess.h>
 #include "aufs.h"
 
 static aufs_bindex_t sbr_find_shared(struct super_block *sb, aufs_bindex_t btop,
