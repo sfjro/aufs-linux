@@ -42,6 +42,12 @@ int vfsub_kern_path(const char *name, unsigned int flags, struct path *path);
 struct dentry *vfsub_lookup_one_len(const char *name, struct path *ppath,
 				    int len);
 
+static inline struct dentry *vfsub_lkup_one(struct qstr *name,
+					    struct path *ppath)
+{
+	return vfsub_lookup_one_len(name->name, ppath, name->len);
+}
+
 /* ---------------------------------------------------------------------- */
 
 ssize_t vfsub_read_u(struct file *file, char __user *ubuf, size_t count,
