@@ -37,6 +37,19 @@ enum {
 
 /* ---------------------------------------------------------------------- */
 
+static inline void vfsub_drop_nlink(struct inode *inode)
+{
+	AuDebugOn(!inode->i_nlink);
+	drop_nlink(inode);
+}
+
+static inline void vfsub_dead_dir(struct inode *inode)
+{
+	AuDebugOn(!S_ISDIR(inode->i_mode));
+	inode->i_flags |= S_DEAD;
+	clear_nlink(inode);
+}
+
 int vfsub_sync_filesystem(struct super_block *h_sb);
 
 /* ---------------------------------------------------------------------- */
@@ -85,6 +98,12 @@ static inline void vfsub_mnt_drop_write(struct vfsmount *mnt)
 
 /* ---------------------------------------------------------------------- */
 
+struct au_hinode;
+struct dentry *vfsub_lock_rename(struct dentry *d1, struct au_hinode *hdir1,
+				 struct dentry *d2, struct au_hinode *hdir2);
+void vfsub_unlock_rename(struct dentry *d1, struct au_hinode *hdir1,
+			 struct dentry *d2, struct au_hinode *hdir2);
+
 int vfsub_create(struct inode *dir, struct path *path, int mode,
 		 bool want_excl);
 int vfsub_symlink(struct inode *dir, struct path *path,
@@ -131,6 +150,18 @@ static inline int vfsub_file_execed(struct file *file)
 	/* todo: direct access f_flags */
 	return !!(vfsub_file_flags(file) & __FMODE_EXEC);
 }
+
+#if 0 /* reserved */
+static inline void vfsub_touch_atime(struct vfsmount *h_mnt,
+				     struct dentry *h_dentry)
+{
+	struct path h_path = {
+		.dentry	= h_dentry,
+		.mnt	= h_mnt
+	};
+	touch_atime(&h_path);
+}
+#endif
 
 /*
  * re-use branch fs's ioctl(FICLONE) while aufs itself doesn't support such
