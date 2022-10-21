@@ -18,6 +18,10 @@
 #include <linux/xattr.h>
 #include "debug.h"
 
+/* copied from linux/fs/internal.h */
+/* todo: BAD approach!! */
+extern struct file *alloc_empty_file(int, const struct cred *);
+
 /* ---------------------------------------------------------------------- */
 
 /* lock subclass for lower inode */
