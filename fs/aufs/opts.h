@@ -29,6 +29,7 @@ enum {
 	Opt_plink, Opt_list_plink,
 	Opt_udba,
 	Opt_dio,
+	Opt_diropq, Opt_diropq_a, Opt_diropq_w,
 	Opt_warn_perm,
 	Opt_wbr_copyup, Opt_wbr_create,
 	Opt_verbose, Opt_noverbose,
@@ -52,6 +53,7 @@ enum {
 #define AuOpt_PLINK		(1 << 6)	/* pseudo-link */
 #define AuOpt_DIRPERM1		(1 << 7)	/* ignore the lower dir's perm
 						   bits */
+#define AuOpt_ALWAYS_DIROPQ	(1 << 9)	/* policy to creating diropq */
 #define AuOpt_SUM		(1 << 10)	/* summation for statfs(2) */
 #define AuOpt_SUM_W		(1 << 11)	/* unimplemented */
 #define AuOpt_WARN_PERM		(1 << 12)	/* warn when add-branch */
