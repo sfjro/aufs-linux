@@ -129,6 +129,16 @@ int au_test_h_perm(struct user_namespace *h_userns, struct inode *h_inode,
 int au_test_h_perm_sio(struct user_namespace *h_userns, struct inode *h_inode,
 		       int mask);
 
+static inline int au_wh_ino(struct super_block *sb, aufs_bindex_t bindex,
+			    ino_t h_ino, unsigned int d_type, ino_t *ino)
+{
+#ifdef CONFIG_AUFS_SHWH
+	return au_ino(sb, bindex, h_ino, d_type, ino);
+#else
+	return 0;
+#endif
+}
+
 /* i_op.c */
 enum {
 	AuIop_SYMLINK,
