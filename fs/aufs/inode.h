@@ -88,6 +88,8 @@ static inline struct au_iinfo *au_ii(struct inode *inode)
 
 /* inode.c */
 struct inode *au_igrab(struct inode *inode);
+int au_test_ro(struct super_block *sb, aufs_bindex_t bindex,
+	       struct inode *inode);
 int au_test_h_perm(struct user_namespace *h_userns, struct inode *h_inode,
 		   int mask);
 int au_test_h_perm_sio(struct user_namespace *h_userns, struct inode *h_inode,

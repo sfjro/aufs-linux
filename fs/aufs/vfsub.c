@@ -7,9 +7,9 @@
  * sub-routines for VFS
  */
 
-#include <linux/namei.h>
 #include <linux/cred.h>
 #include <linux/security.h>
+#include <linux/uaccess.h>
 #include "aufs.h"
 
 struct file *vfsub_dentry_open(struct path *path, int flags)
