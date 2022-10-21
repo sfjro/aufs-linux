@@ -31,6 +31,34 @@ struct au_dinfo {
 
 /* ---------------------------------------------------------------------- */
 
+/* flags for au_lkup_dentry() */
+#define AuLkup_ALLOW_NEG	1
+#define AuLkup_IGNORE_PERM	(1 << 1)
+#define au_ftest_lkup(flags, name)	((flags) & AuLkup_##name)
+#define au_fset_lkup(flags, name) \
+	do { (flags) |= AuLkup_##name; } while (0)
+#define au_fclr_lkup(flags, name) \
+	do { (flags) &= ~AuLkup_##name; } while (0)
+
+struct au_do_lookup_args {
+	unsigned int		flags;
+	mode_t			type;
+	struct qstr		whname, *name;
+};
+
+/* ---------------------------------------------------------------------- */
+
+/* dentry.c */
+struct au_branch;
+struct dentry *au_sio_lkup_one(struct user_namespace *userns, struct qstr *name,
+			       struct path *ppath);
+int au_h_verify(struct dentry *h_dentry, struct inode *h_dir,
+		struct dentry *h_parent, struct au_branch *br);
+
+int au_lkup_dentry(struct dentry *dentry, aufs_bindex_t btop,
+		   unsigned int flags);
+int au_lkup_neg(struct dentry *dentry, aufs_bindex_t bindex, int wh);
+
 /* dinfo.c */
 void au_di_init_once(void *_di);
 struct au_dinfo *au_di_alloc(struct super_block *sb, unsigned int lsc);
