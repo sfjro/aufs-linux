@@ -50,6 +50,13 @@ static inline struct dentry *vfsub_lkup_one(struct qstr *name,
 
 /* ---------------------------------------------------------------------- */
 
+int vfsub_create(struct inode *dir, struct path *path, int mode,
+		 bool want_excl);
+int vfsub_link(struct dentry *src_dentry, struct inode *dir,
+	       struct path *path, struct inode **delegated_inode);
+
+/* ---------------------------------------------------------------------- */
+
 ssize_t vfsub_read_u(struct file *file, char __user *ubuf, size_t count,
 		     loff_t *ppos);
 ssize_t vfsub_read_k(struct file *file, void *kbuf, size_t count,
