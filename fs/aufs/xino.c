@@ -1735,8 +1735,10 @@ void au_xino_delete_inode(struct inode *inode, const int unlinked)
 	    || inode->i_ino == AUFS_ROOT_INO)
 		return;
 
-	if (unlinked)
+	if (unlinked) {
+		au_xigen_inc(inode);
 		au_xib_clear_bit(inode);
+	}
 
 	iinfo = au_ii(inode);
 	bindex = iinfo->ii_btop;
