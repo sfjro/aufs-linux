@@ -25,13 +25,16 @@ enum {
 	Opt_trunc_xino, Opt_trunc_xino_v,
 	Opt_trunc_xino_path, Opt_itrunc_xino,
 	Opt_trunc_xib,
+	Opt_shwh,
 	Opt_plink, Opt_list_plink,
 	Opt_udba,
 	Opt_dio,
+	Opt_warn_perm,
 	Opt_wbr_copyup, Opt_wbr_create,
 	Opt_verbose, Opt_noverbose,
 	Opt_sum, Opt_wsum,
 	Opt_dirperm1,
+	Opt_dirren,
 	Opt_acl,
 	Opt_tail, Opt_ignore, Opt_ignore_silent, Opt_err
 };
@@ -45,11 +48,13 @@ enum {
 #define AuOpt_UDBA_NONE		(1 << 2)	/* users direct branch access */
 #define AuOpt_UDBA_REVAL	(1 << 3)
 #define AuOpt_UDBA_HNOTIFY	(1 << 4)
+#define AuOpt_SHWH		(1 << 5)	/* show whiteout */
 #define AuOpt_PLINK		(1 << 6)	/* pseudo-link */
 #define AuOpt_DIRPERM1		(1 << 7)	/* ignore the lower dir's perm
 						   bits */
 #define AuOpt_SUM		(1 << 10)	/* summation for statfs(2) */
 #define AuOpt_SUM_W		(1 << 11)	/* unimplemented */
+#define AuOpt_WARN_PERM		(1 << 12)	/* warn when add-branch */
 #define AuOpt_VERBOSE		(1 << 13)	/* print the cause of error */
 #define AuOpt_DIO		(1 << 14)	/* direct io */
 #define AuOpt_DIRREN		(1 << 15)	/* directory rename */
@@ -62,12 +67,16 @@ enum {
 #undef AuOpt_DIRREN
 #define AuOpt_DIRREN		0
 #endif
+#ifndef CONFIG_AUFS_SHWH
+#undef AuOpt_SHWH
+#define AuOpt_SHWH		0
+#endif
 
 #define AuOpt_Def	(AuOpt_XINO \
 			 | AuOpt_UDBA_REVAL \
 			 | AuOpt_PLINK \
 			 /* | AuOpt_DIRPERM1 */ \
-			)
+			 | AuOpt_WARN_PERM)
 #define AuOptMask_UDBA	(AuOpt_UDBA_NONE \
 			 | AuOpt_UDBA_REVAL \
 			 | AuOpt_UDBA_HNOTIFY)
@@ -187,11 +196,17 @@ struct au_opt {
 #define AuOpts_TRUNC_XIB	(1 << 2)
 #define AuOpts_REFRESH_DYAOP	(1 << 3)
 #define AuOpts_REFRESH_IDOP	(1 << 4)
+#define AuOpts_DR_FLUSHED	(1 << 5)
 #define au_ftest_opts(flags, name)	((flags) & AuOpts_##name)
 #define au_fset_opts(flags, name) \
 	do { (flags) |= AuOpts_##name; } while (0)
 #define au_fclr_opts(flags, name) \
 	do { (flags) &= ~AuOpts_##name; } while (0)
+
+#ifndef CONFIG_AUFS_DIRREN
+#undef AuOpts_DR_FLUSHED
+#define AuOpts_DR_FLUSHED	0
+#endif
 
 struct au_opts {
 	struct au_opt	*opt;
