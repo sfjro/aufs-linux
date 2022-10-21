@@ -17,6 +17,7 @@
 
 struct au_hinode {
 	struct inode		*hi_inode;
+	aufs_bindex_t		hi_id;
 };
 
 struct au_iigen {
@@ -50,6 +51,9 @@ static inline struct au_iinfo *au_ii(struct inode *inode)
 
 /* ---------------------------------------------------------------------- */
 
+/* inode.c */
+struct inode *au_igrab(struct inode *inode);
+
 /* iinfo.c */
 struct inode *au_h_iptr(struct inode *inode, aufs_bindex_t bindex);
 void au_hiput(struct au_hinode *hinode);
@@ -63,6 +67,7 @@ void au_icntnr_init_once(void *_c);
 void au_hinode_init(struct au_hinode *hinode);
 int au_iinfo_init(struct inode *inode);
 void au_iinfo_fin(struct inode *inode);
+int au_hinode_realloc(struct au_iinfo *iinfo, int nbr, int may_shrink);
 
 /* ---------------------------------------------------------------------- */
 
@@ -192,6 +197,13 @@ static inline struct au_hinode *au_hinode(struct au_iinfo *iinfo,
 static inline int au_is_bad_inode(struct inode *inode)
 {
 	return !!(is_bad_inode(inode) || !au_hinode(au_ii(inode), 0));
+}
+
+static inline aufs_bindex_t au_ii_br_id(struct inode *inode,
+					aufs_bindex_t bindex)
+{
+	IiMustAnyLock(inode);
+	return au_hinode(au_ii(inode), bindex)->hi_id;
 }
 
 static inline aufs_bindex_t au_ibtop(struct inode *inode)

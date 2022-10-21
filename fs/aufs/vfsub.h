@@ -19,5 +19,7 @@
 #define MtxMustLock(mtx)	AuDebugOn(!mutex_is_locked(mtx))
 #define IMustLock(i)		AuDebugOn(!inode_is_locked(i))
 
+int vfsub_kern_path(const char *name, unsigned int flags, struct path *path);
+
 #endif /* __KERNEL__ */
 #endif /* __AUFS_VFSUB_H__ */
