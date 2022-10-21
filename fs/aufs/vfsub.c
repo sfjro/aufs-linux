@@ -124,9 +124,8 @@ static void call_unlink(void *args)
 	struct dentry *d = a->path->dentry;
 	struct inode *h_inode;
 	struct user_namespace *userns;
-	/* re-commit later */
-	const int stop_sillyrename = 0; /* (au_test_nfs(d->d_sb)
-				       * && au_dcount(d) == 1); */
+	const int stop_sillyrename = (au_test_nfs(d->d_sb)
+				      && au_dcount(d) == 1);
 
 	IMustLock(a->dir);
 
