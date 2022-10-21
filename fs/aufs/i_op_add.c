@@ -526,7 +526,7 @@ static int au_cpup_before_link(struct dentry *src_dentry,
 		.bsrc	= a->bsrc,
 		.len	= -1,
 		.pin	= &a->pin,
-		.flags	= AuCpup_DTIME /* | AuCpup_KEEPLINO */
+		.flags	= AuCpup_DTIME | AuCpup_HOPEN /* | AuCpup_KEEPLINO */
 	};
 
 	di_read_lock_parent(a->src_parent, AuLock_IR);
@@ -558,6 +558,7 @@ static int au_cpup_or_link(struct dentry *src_dentry, struct dentry *dentry,
 	struct dentry *h_src_dentry;
 	struct inode *h_inode, *inode, *delegated;
 	struct super_block *sb;
+	struct file *h_file;
 
 	plink = 0;
 	h_inode = NULL;
@@ -578,7 +579,10 @@ static int au_cpup_or_link(struct dentry *src_dentry, struct dentry *dentry,
 		spin_lock(&dentry->d_lock);
 		dentry->d_inode = d_inode(src_dentry); /* tmp */
 		spin_unlock(&dentry->d_lock);
-		{ /* re-commit later */
+		h_file = au_h_open_pre(dentry, a->bsrc, /*force_wr*/0);
+		if (IS_ERR(h_file))
+			err = PTR_ERR(h_file);
+		else {
 			struct au_cp_generic cpg = {
 				.dentry	= dentry,
 				.bdst	= a->bdst,
@@ -588,6 +592,7 @@ static int au_cpup_or_link(struct dentry *src_dentry, struct dentry *dentry,
 				.flags	= AuCpup_KEEPLINO
 			};
 			err = au_sio_cpup_simple(&cpg);
+			au_h_open_post(dentry, a->bsrc, h_file);
 			if (!err) {
 				dput(a->h_path.dentry);
 				a->h_path.dentry = au_h_dptr(dentry, a->bdst);
