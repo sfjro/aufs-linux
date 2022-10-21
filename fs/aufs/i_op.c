@@ -641,11 +641,13 @@ struct inode_operations aufs_iop[] = {
 	[AuIop_DIR] = {
 		.create		= aufs_create,
 		.lookup		= aufs_lookup,
+		.link		= aufs_link,
 		.unlink		= aufs_unlink,
 		.symlink	= aufs_symlink,
 		.mkdir		= aufs_mkdir,
 		.rmdir		= aufs_rmdir,
 		.mknod		= aufs_mknod,
+		.rename		= aufs_rename,
 
 		.permission	= aufs_permission,
 

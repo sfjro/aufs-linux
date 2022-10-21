@@ -174,6 +174,8 @@ int aufs_create(struct user_namespace *userns, struct inode *dir,
 		struct dentry *dentry, umode_t mode, bool want_excl);
 int aufs_tmpfile(struct user_namespace *userns, struct inode *dir,
 		 struct dentry *dentry, umode_t mode);
+int aufs_link(struct dentry *src_dentry, struct inode *dir,
+	      struct dentry *dentry);
 int aufs_mkdir(struct user_namespace *userns, struct inode *dir,
 	       struct dentry *dentry, umode_t mode);
 
@@ -183,6 +185,13 @@ int au_may_del(struct dentry *dentry, aufs_bindex_t bindex,
 	       struct dentry *h_parent, int isdir);
 int aufs_unlink(struct inode *dir, struct dentry *dentry);
 int aufs_rmdir(struct inode *dir, struct dentry *dentry);
+
+/* i_op_ren.c */
+int au_wbr(struct dentry *dentry, aufs_bindex_t btgt);
+int aufs_rename(struct user_namespace *userns,
+		struct inode *_src_dir, struct dentry *_src_dentry,
+		struct inode *_dst_dir, struct dentry *_dst_dentry,
+		unsigned int _flags);
 
 /* iinfo.c */
 struct inode *au_h_iptr(struct inode *inode, aufs_bindex_t bindex);
