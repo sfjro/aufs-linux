@@ -363,9 +363,11 @@ int aufs_unlink(struct inode *dir, struct dentry *dentry)
 		epilog(dir, dentry, bindex);
 
 		/* update target timestamps */
-		if (bindex == btop)
+		if (bindex == btop) {
+			vfsub_update_h_iattr(&a->h_path, /*did*/NULL);
+			/*ignore*/
 			inode->i_ctime = d_inode(a->h_path.dentry)->i_ctime;
-		else
+		} else
 			/* todo: this timestamp may be reverted later */
 			inode->i_ctime = h_dir->i_ctime;
 		goto out_unpin; /* success */
