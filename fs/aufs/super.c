@@ -62,7 +62,20 @@ struct inode *au_iget_locked(struct super_block *sb, ino_t ino)
 out:
 	/* never return NULL */
 	AuDebugOn(!inode);
+	AuTraceErrPtr(inode);
 	return inode;
+}
+
+/* ---------------------------------------------------------------------- */
+
+/* final actions when unmounting a file system */
+static void aufs_put_super(struct super_block *sb)
+{
+	struct au_sbinfo *sbinfo;
+
+	sbinfo = au_sbi(sb);
+	if (sbinfo)
+		kobject_put(&sbinfo->si_kobj);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -72,5 +85,6 @@ const struct super_operations aufs_sop = {
 	.destroy_inode	= aufs_destroy_inode,
 	.free_inode	= aufs_free_inode,
 	/* always deleting, no clearing */
-	.drop_inode	= generic_delete_inode
+	.drop_inode	= generic_delete_inode,
+	.put_super	= aufs_put_super
 };
