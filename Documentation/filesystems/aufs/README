@@ -15,13 +15,18 @@ approaches to aufs1's.
 Unionfs was being developed by Professor Erez Zadok at Stony Brook
 University and his team.
 
-Aufs6 supports linux-v6.0 and later, If you want older kernel version
-support,
-- for linux-v5.x series, try aufs5-linux.git or aufs5-standalone.git
+Aufs6 supports linux-v6.0 and later, try aufs6.0 branch in
+aufs-linux.git or aufs-standalone.git.
+If you want older kernel version support,
+- for linux-v5.x series, try aufs-linux.git or aufs-standalone.git
 - for linux-v4.x series, try aufs4-linux.git or aufs4-standalone.git
 - for linux-v3.x series, try aufs3-linux.git or aufs3-standalone.git
 - for linux-v2.6.16 and later, try aufs2-2.6.git, aufs2-standalone.git
   or aufs1 from CVS on SourceForge.
+
+Note: the name of aufs5-linux.git and aufs5-standalone.git on github
+      were changed. Now they are aufs-linux.git and
+      aufs-standalone.git and they contain aufs5 and later branches.
 
 Note: it becomes clear that "Aufs was rejected. Let's give it up."
       According to Christoph Hellwig, linux rejects all union-type
