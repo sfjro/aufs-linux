@@ -185,10 +185,6 @@ typedef int16_t aufs_bindex_t;
 
 /* the longest combination */
 /* AUFS_BRATTR_ICEX and AUFS_BRATTR_ICEX_TR don't affect here */
-#ifdef __KERNEL__
-static_assert(sizeof(AUFS_BRWATTR_NLWH) >= sizeof(AUFS_BRRATTR_WH));
-static_assert(sizeof(AUFS_BRWATTR_NLWH) >= sizeof(AUFS_BRWATTR_MOO));
-#endif /* __KERNEL__ */
 #define AuBrPermStrSz	sizeof(AUFS_BRPERM_RW			\
 			       "+" AUFS_BRATTR_COO_REG		\
 			       "+" AUFS_BRATTR_FHSM		\
