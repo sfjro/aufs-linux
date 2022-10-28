@@ -439,7 +439,7 @@ struct fillvdir_arg {
 	int			err;
 };
 
-static int fillvdir(struct dir_context *ctx, const char *__name, int nlen,
+static bool fillvdir(struct dir_context *ctx, const char *__name, int nlen,
 		    loff_t offset __maybe_unused, u64 h_ino,
 		    unsigned int d_type)
 {
@@ -490,7 +490,7 @@ out:
 		arg->vdir->vd_jiffy = jiffies;
 	/* smp_mb(); */
 	AuTraceErr(arg->err);
-	return arg->err;
+	return !arg->err;
 }
 
 static int au_handle_shwh(struct super_block *sb, struct au_vdir *vdir,

@@ -32,8 +32,8 @@ struct au_rdu_arg {
 	int				err;
 };
 
-static int au_rdu_fill(struct dir_context *ctx, const char *name, int nlen,
-		       loff_t offset, u64 h_ino, unsigned int d_type)
+static bool au_rdu_fill(struct dir_context *ctx, const char *name, int nlen,
+			loff_t offset, u64 h_ino, unsigned int d_type)
 {
 	int err, len;
 	struct au_rdu_arg *arg = container_of(ctx, struct au_rdu_arg, ctx);
@@ -74,7 +74,7 @@ static int au_rdu_fill(struct dir_context *ctx, const char *name, int nlen,
 
 out:
 	/* AuTraceErr(err); */
-	return err;
+	return !err;
 }
 
 static int au_rdu_do(struct file *h_file, struct au_rdu_arg *arg)

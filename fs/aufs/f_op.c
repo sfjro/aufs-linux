@@ -48,12 +48,17 @@ int au_do_open_nondir(struct file *file, int flags, struct file *h_file)
 		/* br ref is already inc-ed */
 	}
 
-	if ((flags & __O_TMPFILE)
-	    && !(flags & O_EXCL)) {
-		h_inode = file_inode(h_file);
-		spin_lock(&h_inode->i_lock);
-		h_inode->i_state |= I_LINKABLE;
-		spin_unlock(&h_inode->i_lock);
+	if (flags & __O_TMPFILE) {
+		AuDebugOn(!h_file);
+		AuDebugOn(h_file != au_di(dentry)->di_htmpfile);
+		au_di(dentry)->di_htmpfile = NULL;
+
+		if (!(flags & O_EXCL)) {
+			h_inode = file_inode(h_file);
+			spin_lock(&h_inode->i_lock);
+			h_inode->i_state |= I_LINKABLE;
+			spin_unlock(&h_inode->i_lock);
+		}
 	}
 	au_set_fbtop(file, bindex);
 	au_set_h_fptr(file, bindex, h_file);
