@@ -430,6 +430,10 @@ static long aufs_fallocate(struct file *file, int mode, loff_t offset,
 	lockdep_off();
 	err = vfs_fallocate(h_file, mode, offset, len);
 	lockdep_on();
+	/*
+	 * we don't need to call file_modifed() here since au_write_post()
+	 * is equivalent and copies-up all timestamps and permission bits.
+	 */
 	au_write_post(inode, h_file, &wpre, /*written*/1);
 
 out:
