@@ -576,7 +576,7 @@ out:
  * regardless 'acl' option, reset all ACL.
  * All ACL will be copied up later from the original entry on the lower branch.
  */
-static int au_reset_acl(struct inode *h_dir, struct path *h_path, umode_t mode)
+static int au_reset_acl(struct path *h_path, umode_t mode)
 {
 	int err;
 	struct dentry *h_dentry;
@@ -698,7 +698,7 @@ int cpup_entry(struct au_cp_generic *cpg, struct dentry *dst_parent,
 		err = -EIO;
 	}
 	if (!err)
-		err = au_reset_acl(h_dir, &h_path, mode);
+		err = au_reset_acl(&h_path, mode);
 
 	mnt_flags = au_mntflags(sb);
 	if (!au_opt_test(mnt_flags, UDBA_NONE)
