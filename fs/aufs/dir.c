@@ -536,9 +536,9 @@ struct test_empty_arg {
 	aufs_bindex_t bindex;
 };
 
-static int test_empty_cb(struct dir_context *ctx, const char *__name,
-			 int namelen, loff_t offset __maybe_unused, u64 ino,
-			 unsigned int d_type)
+static bool test_empty_cb(struct dir_context *ctx, const char *__name,
+			  int namelen, loff_t offset __maybe_unused, u64 ino,
+			  unsigned int d_type)
 {
 	struct test_empty_arg *arg = container_of(ctx, struct test_empty_arg,
 						  ctx);
@@ -569,7 +569,7 @@ static int test_empty_cb(struct dir_context *ctx, const char *__name,
 out:
 	/* smp_mb(); */
 	AuTraceErr(arg->err);
-	return arg->err;
+	return !arg->err;
 }
 
 static int do_test_empty(struct dentry *dentry, struct test_empty_arg *arg)

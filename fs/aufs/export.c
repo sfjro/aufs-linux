@@ -333,7 +333,7 @@ struct find_name_by_ino {
 	int namelen;
 };
 
-static int
+static bool
 find_name_by_ino(struct dir_context *ctx, const char *name, int namelen,
 		 loff_t offset, u64 ino, unsigned int d_type)
 {
@@ -342,12 +342,12 @@ find_name_by_ino(struct dir_context *ctx, const char *name, int namelen,
 
 	a->called++;
 	if (a->ino != ino)
-		return 0;
+		return true;
 
 	memcpy(a->name, name, namelen);
 	a->namelen = namelen;
 	a->found = 1;
-	return 1;
+	return false;
 }
 
 static struct dentry *au_lkup_by_ino(struct path *path, ino_t ino,

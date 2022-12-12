@@ -405,15 +405,18 @@ int au_aopen_or_create(struct inode *dir, struct dentry *dentry,
 }
 
 int aufs_tmpfile(struct user_namespace *userns, struct inode *dir,
-		 struct dentry *dentry, umode_t mode)
+		 struct file *file, umode_t mode)
 {
 	int err;
 	aufs_bindex_t bindex;
+	struct path h_ppath;
 	struct super_block *sb;
-	struct dentry *parent, *h_parent, *h_dentry;
+	struct au_branch *br;
+	struct dentry *dentry, *parent, *h_parent, *h_dentry;
 	struct inode *h_dir, *inode;
 	struct vfsmount *h_mnt;
 	struct user_namespace *h_userns;
+	struct file *h_file;
 	struct au_wr_dir_args wr_dir_args = {
 		.force_btgt	= -1,
 		.flags		= AuWrDir_TMPFILE
@@ -422,11 +425,13 @@ int aufs_tmpfile(struct user_namespace *userns, struct inode *dir,
 	/* copy-up may happen */
 	inode_lock(dir);
 
+	h_file = NULL;
 	sb = dir->i_sb;
 	err = si_read_lock(sb, AuLock_FLUSH | AuLock_NOPLM);
 	if (unlikely(err))
 		goto out;
 
+	dentry = file->f_path.dentry;
 	err = au_di_init(dentry);
 	if (unlikely(err))
 		goto out_si;
@@ -455,19 +460,25 @@ int aufs_tmpfile(struct user_namespace *userns, struct inode *dir,
 	if (unlikely(!h_dir->i_op->tmpfile))
 		goto out_parent;
 
-	h_mnt = au_sbr_mnt(sb, bindex);
+	br = au_sbr(sb, bindex);
+	h_mnt = au_br_mnt(br);
 	err = vfsub_mnt_want_write(h_mnt);
 	if (unlikely(err))
 		goto out_parent;
 
 	h_userns = mnt_user_ns(h_mnt);
 	h_parent = au_h_dptr(parent, bindex);
-	h_dentry = vfs_tmpfile(h_userns, h_parent, mode, /*open_flag*/0);
-	if (IS_ERR(h_dentry)) {
-		err = PTR_ERR(h_dentry);
+	h_ppath.mnt = h_mnt;
+	h_ppath.dentry = h_parent;
+	h_file = vfs_tmpfile_open(h_userns, &h_ppath, mode, /*open_flag*/0,
+				    /*cred*/NULL);
+	if (IS_ERR(h_file)) {
+		err = PTR_ERR(h_file);
+		h_file = NULL;
 		goto out_mnt;
 	}
 
+	h_dentry = h_file->f_path.dentry;
 	au_set_dbtop(dentry, bindex);
 	au_set_dbbot(dentry, bindex);
 	au_set_h_dptr(dentry, bindex, dget(h_dentry));
@@ -477,32 +488,52 @@ int aufs_tmpfile(struct user_namespace *userns, struct inode *dir,
 		au_set_h_dptr(dentry, bindex, NULL);
 		au_set_dbtop(dentry, -1);
 		au_set_dbbot(dentry, -1);
-	} else {
-		if (!inode->i_nlink)
-			set_nlink(inode, 1);
-		d_tmpfile(dentry, inode);
-		au_di(dentry)->di_tmpfile = 1;
-
-		/* update without i_mutex */
-		if (au_ibtop(dir) == au_dbtop(dentry))
-			au_cpup_attr_timesizes(dir);
+		goto out_h_file;
 	}
-	dput(h_dentry);
 
+	if (!inode->i_nlink)
+		set_nlink(inode, 1);
+	d_tmpfile(file, inode);
+	au_di(dentry)->di_tmpfile = 1;
+	get_file(h_file);
+	au_di(dentry)->di_htmpfile = h_file;
+
+	/* update without i_mutex */
+	if (au_ibtop(dir) == au_dbtop(dentry))
+		au_cpup_attr_timesizes(dir);
+
+out_h_file:
+	fput(h_file);
 out_mnt:
 	vfsub_mnt_drop_write(h_mnt);
 out_parent:
 	di_write_unlock(parent);
 	dput(parent);
 	di_write_unlock(dentry);
-	if (unlikely(err)) {
-		au_di_fin(dentry);
-		dentry->d_fsdata = NULL;
-	}
+	if (!err)
+		goto out_si;
+	if (h_file)
+		fput(h_file);
+	au_di(dentry)->di_htmpfile = NULL;
+	au_di_fin(dentry);
+	dentry->d_fsdata = NULL;
 out_si:
 	si_read_unlock(sb);
+	if (!err && h_file) {
+		/* finally... */
+		err = finish_open_simple(file, err);
+		if (!err)
+			au_lcnt_inc(&br->br_nfiles);
+		else {
+			fput(h_file);
+			au_di(dentry)->di_htmpfile = NULL;
+			au_di_fin(dentry);
+			dentry->d_fsdata = NULL;
+		}
+	}
 out:
 	inode_unlock(dir);
+	AuTraceErr(err);
 	return err;
 }
 

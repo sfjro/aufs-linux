@@ -231,18 +231,20 @@ int au_do_open(struct file *file, struct au_do_open_args *args)
 	AuDebugOn(IS_ERR_OR_NULL(dentry));
 	di_write_lock_child(dentry);
 	err = au_cmoo(dentry);
-	di_downgrade_lock(dentry, AuLock_IR);
 	if (!err) {
-		if (!aopen)
-			err = args->open(file, vfsub_file_flags(file), NULL);
-		else {
+		if (!aopen) {
+			err = args->open(file, vfsub_file_flags(file),
+					 au_di(dentry)->di_htmpfile);
+			di_write_unlock(dentry);
+		} else {
+			di_downgrade_lock(dentry, AuLock_IR);
 			lockdep_off();
 			err = args->open(file, vfsub_file_flags(file),
 					 args->h_file);
 			lockdep_on();
+			di_read_unlock(dentry, AuLock_IR);
 		}
 	}
-	di_read_unlock(dentry, AuLock_IR);
 
 	finfo = au_fi(file);
 	if (!err) {

@@ -212,7 +212,7 @@ struct vfsub_aopen_args;
 int au_aopen_or_create(struct inode *dir, struct dentry *dentry,
 		       struct vfsub_aopen_args *args);
 int aufs_tmpfile(struct user_namespace *userns, struct inode *dir,
-		 struct dentry *dentry, umode_t mode);
+		 struct file *file, umode_t mode);
 int aufs_link(struct dentry *src_dentry, struct inode *dir,
 	      struct dentry *dentry);
 int aufs_mkdir(struct user_namespace *userns, struct inode *dir,
@@ -327,7 +327,7 @@ struct au_sxattr {
 	union {
 		struct {
 			const char	*name;
-			void		*value;
+			const void	*value;
 			size_t		size;
 			int		flags;
 		} set;

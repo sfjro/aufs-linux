@@ -299,7 +299,7 @@ static ssize_t au_getxattr(struct dentry *dentry, struct inode *inode,
 }
 
 static int au_setxattr(struct dentry *dentry, struct inode *inode,
-		       const char *name, void *value, size_t size,
+		       const char *name, const void *value, size_t size,
 		       int flags)
 {
 	struct au_sxattr arg = {
@@ -324,17 +324,13 @@ static int au_xattr_get(const struct xattr_handler *handler,
 	return au_getxattr(dentry, inode, name, buffer, size);
 }
 
-/*
- * The prameter 'void *value' of vfs_setxattr() is NOT const, but
- * xattr_handler->set() requires const. Is it OK? I don't know.
- */
 static int au_xattr_set(const struct xattr_handler *handler,
 			struct user_namespace *userns,
 			struct dentry *dentry, struct inode *inode,
 			const char *name, const void *value, size_t size,
 			int flags)
 {
-	return au_setxattr(dentry, inode, name, (void *)value, size, flags);
+	return au_setxattr(dentry, inode, name, value, size, flags);
 }
 
 static const struct xattr_handler au_xattr_handler = {

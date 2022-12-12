@@ -316,13 +316,9 @@ static inline int vfsub_getattr(const struct path *path, struct kstat *st)
 
 /* ---------------------------------------------------------------------- */
 
-/*
- * The parameter 'value' is not const since the id in ACL_USER/ACL_GROUP may be
- * changed by idmapping.
- */
 static inline int vfsub_setxattr(struct user_namespace *userns,
 				 struct dentry *dentry, const char *name,
-				 void *value, size_t size, int flags)
+				 const void *value, size_t size, int flags)
 {
 	int err;
 
