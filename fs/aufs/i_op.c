@@ -44,7 +44,8 @@ static int h_permission(struct inode *h_inode, int mask,
 		&& write_mask && !(mask & MAY_READ))
 	    || !h_inode->i_op->permission) {
 		/* AuLabel(generic_permission); */
-		/* AuDbg("get_acl %ps\n", h_inode->i_op->get_acl); */
+		/* AuDbg("get_inode_acl %ps\n",
+		   h_inode->i_op->get_inode_acl); */
 		err = generic_permission(h_userns, h_inode, mask);
 		if (err == -EOPNOTSUPP && au_test_nfs_noacl(h_inode))
 			err = h_inode->i_op->permission(h_userns, h_inode,
@@ -1022,7 +1023,7 @@ static int aufs_setattr(struct user_namespace *userns, struct dentry *dentry,
 	 */
 	if (!err && (ia->ia_valid & ATTR_MODE)) {
 		h_userns = mnt_user_ns(a->h_path.mnt);
-		err = vfsub_acl_chmod(h_userns, a->h_inode, ia->ia_mode);
+		err = vfsub_acl_chmod(h_userns, a->h_path.dentry, ia->ia_mode);
 	}
 	if (!err)
 		au_cpup_attr_changeable(inode);
@@ -1119,7 +1120,7 @@ ssize_t au_sxattr(struct dentry *dentry, struct inode *inode,
 		h_inode = d_inode(h_path.dentry);
 		if (h_inode->i_op->set_acl) {
 			/* this will call posix_acl_update_mode */
-			err = h_inode->i_op->set_acl(h_userns, h_inode,
+			err = h_inode->i_op->set_acl(h_userns, h_path.dentry,
 						     arg->u.acl_set.acl,
 						     arg->u.acl_set.type);
 		}
@@ -1437,6 +1438,7 @@ struct inode_operations aufs_iop_nogetattr[AuIop_Last],
 	[AuIop_SYMLINK] = {
 		.permission	= aufs_permission,
 #ifdef CONFIG_FS_POSIX_ACL
+		.get_inode_acl	= aufs_get_inode_acl,
 		.get_acl	= aufs_get_acl,
 		.set_acl	= aufs_set_acl, /* unsupport for symlink? */
 #endif
@@ -1465,6 +1467,7 @@ struct inode_operations aufs_iop_nogetattr[AuIop_Last],
 
 		.permission	= aufs_permission,
 #ifdef CONFIG_FS_POSIX_ACL
+		.get_inode_acl	= aufs_get_inode_acl,
 		.get_acl	= aufs_get_acl,
 		.set_acl	= aufs_set_acl,
 #endif
@@ -1483,6 +1486,7 @@ struct inode_operations aufs_iop_nogetattr[AuIop_Last],
 	[AuIop_OTHER] = {
 		.permission	= aufs_permission,
 #ifdef CONFIG_FS_POSIX_ACL
+		.get_inode_acl	= aufs_get_inode_acl,
 		.get_acl	= aufs_get_acl,
 		.set_acl	= aufs_set_acl,
 #endif
