@@ -114,11 +114,13 @@ static int do_pri_inode(aufs_bindex_t bindex, struct inode *inode, int hn,
 	}
 
 	dpri("i%d: %p, i%lu, %s, cnt %d, nl %u, 0%o, sz %llu, blk %llu,"
+	     " acl %p, def_acl %p,"
 	     " hn %d, ct %lld, np %lu, st 0x%lx, f 0x%x, v %llu, g %x%s%.*s\n",
 	     bindex, inode,
 	     inode->i_ino, inode->i_sb ? au_sbtype(inode->i_sb) : "??",
 	     atomic_read(&inode->i_count), inode->i_nlink, inode->i_mode,
 	     i_size_read(inode), (unsigned long long)inode->i_blocks,
+	     inode->i_acl, inode->i_default_acl,
 	     hn, (long long)timespec64_to_ns(&inode->i_ctime) & 0x0ffff,
 	     inode->i_mapping ? inode->i_mapping->nrpages : 0,
 	     inode->i_state, inode->i_flags, inode_peek_iversion(inode),

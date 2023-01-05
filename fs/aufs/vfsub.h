@@ -222,18 +222,18 @@ static inline int vfsub_update_time(struct inode *h_inode,
 
 #ifdef CONFIG_FS_POSIX_ACL
 static inline int vfsub_acl_chmod(struct user_namespace *h_userns,
-				  struct inode *h_inode, umode_t h_mode)
+				  struct dentry *h_dentry, umode_t h_mode)
 {
 	int err;
 
-	err = posix_acl_chmod(h_userns, h_inode, h_mode);
+	err = posix_acl_chmod(h_userns, h_dentry, h_mode);
 	if (err == -EOPNOTSUPP)
 		err = 0;
 	return err;
 }
 #else
 AuStubInt0(vfsub_acl_chmod, struct user_namespace *h_userns,
-	   struct inode *h_inode, umode_t h_mode);
+	   struct dentry *h_dentry, umode_t h_mode);
 #endif
 
 long vfsub_splice_to(struct file *in, loff_t *ppos,
@@ -340,6 +340,38 @@ static inline int vfsub_removexattr(struct user_namespace *userns,
 
 	return err;
 }
+
+#ifdef CONFIG_FS_POSIX_ACL
+static inline int vfsub_set_acl(struct user_namespace *userns,
+				struct dentry *dentry, const char *name,
+				struct posix_acl *acl)
+{
+	int err;
+
+	lockdep_off();
+	err = vfs_set_acl(userns, dentry, name, acl);
+	lockdep_on();
+
+	return err;
+}
+
+static inline int vfsub_remove_acl(struct user_namespace *userns,
+				   struct dentry *dentry, const char *name)
+{
+	int err;
+
+	lockdep_off();
+	err = vfs_remove_acl(userns, dentry, name);
+	lockdep_on();
+
+	return err;
+}
+#else
+AuStubInt0(vfsub_set_acl, struct user_namespace *userns, struct dentry *dentry,
+	   const char *name, struct posix_acl *acl);
+AuStubInt0(vfsub_remove_acl, struct user_namespace *userns,
+	   struct dentry *dentry, const char *name);
+#endif
 
 #endif /* __KERNEL__ */
 #endif /* __AUFS_VFSUB_H__ */
