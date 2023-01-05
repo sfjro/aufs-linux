@@ -22,6 +22,10 @@ support,
 - for linux-v2.6.16 and later, try aufs2-2.6.git, aufs2-standalone.git
   or aufs1 from CVS on SourceForge.
 
+Note: the name of aufs5-linux.git and aufs5-standalone.git on github
+      were changed. Now they are aufs-linux.git and
+      aufs-standalone.git and they contain aufs5 and later branches.
+
 Note: it becomes clear that "Aufs was rejected. Let's give it up."
       According to Christoph Hellwig, linux rejects all union-type
       filesystems but UnionMount.
@@ -98,21 +102,20 @@ Features or just an idea in the future (see also design/*.txt),
 
 2. Download
 ----------------------------------------
-There are three GIT trees for aufs5, aufs5-linux.git,
-aufs5-standalone.git, and aufs-util.git. Note that there is no "5" in
-"aufs-util.git."
-While the aufs-util is always necessary, you need either of aufs5-linux
-or aufs5-standalone.
+There are three GIT trees for aufs5, aufs-linux.git,
+aufs-standalone.git, and aufs-util.git.
+While the aufs-util is always necessary, you need either of aufs-linux
+or aufs-standalone.
 
-The aufs5-linux tree includes the whole linux mainline GIT tree,
+The aufs-linux tree includes the whole linux mainline GIT tree,
 git://git.kernel.org/.../torvalds/linux.git.
 And you cannot select CONFIG_AUFS_FS=m for this version, eg. you cannot
 build aufs5 as an external kernel module.
 Several extra patches are not included in this tree. Only
-aufs5-standalone tree contains them. They are described in the later
+aufs-standalone tree contains them. They are described in the later
 section "Configuration and Compilation."
 
-On the other hand, the aufs5-standalone tree has only aufs source files
+On the other hand, the aufs-standalone tree has only aufs source files
 and necessary patches, and you can select CONFIG_AUFS_FS=m.
 But you need to apply all aufs patches manually.
 
@@ -121,30 +124,30 @@ represents the linux kernel version, "linux-5.x". For instance,
 "aufs5.0" is for linux-5.0. For latest "linux-5.x-rcN", use
 "aufs5.x-rcN" branch.
 
-o aufs5-linux tree
+o aufs-linux tree
 $ git clone --reference /your/linux/git/tree \
-	git://github.com/sfjro/aufs5-linux.git aufs5-linux.git
+	git://github.com/sfjro/aufs-linux.git aufs-linux.git
 - if you don't have linux GIT tree, then remove "--reference ..."
-$ cd aufs5-linux.git
+$ cd aufs-linux.git
 $ git checkout origin/aufs5.0
 
 Or You may want to directly git-pull aufs into your linux GIT tree, and
 leave the patch-work to GIT.
 $ cd /your/linux/git/tree
-$ git remote add aufs5 git://github.com/sfjro/aufs5-linux.git
-$ git fetch aufs5
+$ git remote add aufs git://github.com/sfjro/aufs-linux.git
+$ git fetch aufs
 $ git checkout -b my5.0 v5.0
 $ (add your local change...)
-$ git pull aufs5 aufs5.0
+$ git pull aufs aufs5.0
 - now you have v5.0 + your_changes + aufs5.0 in you my5.0 branch.
 - you may need to solve some conflicts between your_changes and
   aufs5.0. in this case, git-rerere is recommended so that you can
   solve the similar conflicts automatically when you upgrade to 5.1 or
   later in the future.
 
-o aufs5-standalone tree
-$ git clone git://github.com/sfjro/aufs5-standalone.git aufs5-standalone.git
-$ cd aufs5-standalone.git
+o aufs-standalone tree
+$ git clone git://github.com/sfjro/aufs-standalone.git aufs-standalone.git
+$ cd aufs-standalone.git
 $ git checkout origin/aufs5.0
 
 o aufs-util tree
@@ -179,7 +182,7 @@ Also you can view all branches by
 ----------------------------------------
 Make sure you have git-checkout'ed the correct branch.
 
-For aufs5-linux tree,
+For aufs-linux tree,
 - enable CONFIG_AUFS_FS.
 - set other aufs configurations if necessary.
 - for aufs5.13 and later
@@ -192,8 +195,10 @@ For aufs5-linux tree,
 	CONFIG_LOCKDEP_BITS=21
 	CONFIG_LOCKDEP_CHAINS_BITS=21
 	CONFIG_LOCKDEP_STACK_TRACE_BITS=24
+  Also you will need to expand some constant values in LOCKDEP. Refer
+  to lockdep-debug.patch in aufs-standalone.git.
 
-For aufs5-standalone tree,
+For aufs-standalone tree,
 There are several ways to build.
 
 1.
@@ -253,7 +258,7 @@ And then,
   then run "make install_ulib" too. And refer to the aufs manual in
   detail.
 
-There several other patches in aufs5-standalone.git. They are all
+There several other patches in aufs-standalone.git. They are all
 optional. When you meet some problems, they will help you.
 - aufs5-loopback.patch
   Supports a nested loopback mount in a branch-fs. This patch is
@@ -269,6 +274,10 @@ optional. When you meet some problems, they will help you.
   duplication of inode number, which is important for backup tools and
   other utilities. When you find aufs XINO files for tmpfs branch
   growing too much, try this patch.
+- lockdep-debug.patch
+  Similar to some kernel configurations for LOCKDEP (see the top of
+  this section), you will need expand some constants in LOCKDEP for
+  aufs if you enable CONFIG_LOCKDEP.
 
 
 4. Usage
