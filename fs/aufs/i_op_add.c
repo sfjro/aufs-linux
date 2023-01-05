@@ -471,7 +471,7 @@ int aufs_tmpfile(struct user_namespace *userns, struct inode *dir,
 	h_ppath.mnt = h_mnt;
 	h_ppath.dentry = h_parent;
 	h_file = vfs_tmpfile_open(h_userns, &h_ppath, mode, /*open_flag*/0,
-				    /*cred*/NULL);
+				  current_cred());
 	if (IS_ERR(h_file)) {
 		err = PTR_ERR(h_file);
 		h_file = NULL;
