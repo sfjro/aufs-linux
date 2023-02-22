@@ -580,19 +580,19 @@ static int au_reset_acl(struct path *h_path, umode_t mode)
 {
 	int err;
 	struct dentry *h_dentry;
-	struct inode *h_inode;
+	/* struct inode *h_inode; */
 	struct user_namespace *h_userns;
 
 	h_userns = mnt_user_ns(h_path->mnt);
 	h_dentry = h_path->dentry;
-	h_inode = d_inode(h_dentry);
+	/* h_inode = d_inode(h_dentry); */
 	/* forget_all_cached_acls(h_inode)); */
-	err = vfsub_removexattr(h_userns, h_dentry, XATTR_NAME_POSIX_ACL_ACCESS);
+	err = vfsub_remove_acl(h_userns, h_dentry, XATTR_NAME_POSIX_ACL_ACCESS);
 	AuTraceErr(err);
 	if (err == -EOPNOTSUPP)
 		err = 0;
 	if (!err)
-		err = vfsub_acl_chmod(h_userns, h_inode, mode);
+		err = vfsub_acl_chmod(h_userns, h_dentry, mode);
 
 	AuTraceErr(err);
 	return err;
@@ -606,8 +606,8 @@ static int au_do_cpup_dir(struct au_cp_generic *cpg, struct dentry *dst_parent,
 	struct user_namespace *h_userns;
 
 	h_userns = mnt_user_ns(h_path->mnt);
-	err = vfsub_removexattr(h_userns, h_path->dentry,
-				XATTR_NAME_POSIX_ACL_DEFAULT);
+	err = vfsub_remove_acl(h_userns, h_path->dentry,
+			       XATTR_NAME_POSIX_ACL_DEFAULT);
 	AuTraceErr(err);
 	if (err == -EOPNOTSUPP)
 		err = 0;

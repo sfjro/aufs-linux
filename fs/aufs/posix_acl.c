@@ -10,7 +10,7 @@
 #include <linux/fs.h>
 #include "aufs.h"
 
-struct posix_acl *aufs_get_acl(struct inode *inode, int type, bool rcu)
+struct posix_acl *aufs_get_inode_acl(struct inode *inode, int type, bool rcu)
 {
 	struct posix_acl *acl;
 	int err;
@@ -40,7 +40,7 @@ struct posix_acl *aufs_get_acl(struct inode *inode, int type, bool rcu)
 	}
 
 	/* always topmost only */
-	acl = get_acl(h_inode, type);
+	acl = get_inode_acl(h_inode, type);
 	if (IS_ERR(acl))
 		forget_cached_acl(inode, type);
 	else
@@ -55,12 +55,24 @@ out:
 	return acl;
 }
 
-int aufs_set_acl(struct user_namespace *userns, struct inode *inode,
+struct posix_acl *aufs_get_acl(struct user_namespace *userns,
+			       struct dentry *dentry, int type)
+{
+	struct posix_acl *acl;
+	struct inode *inode;
+
+	inode = d_inode(dentry);
+	acl = aufs_get_inode_acl(inode, type, /*rcu*/false);
+
+	return acl;
+}
+
+int aufs_set_acl(struct user_namespace *userns, struct dentry *dentry,
 		 struct posix_acl *acl, int type)
 {
 	int err;
 	ssize_t ssz;
-	struct dentry *dentry;
+	struct inode *inode;
 	struct au_sxattr arg = {
 		.type = AU_ACL_SET,
 		.u.acl_set = {
@@ -69,30 +81,15 @@ int aufs_set_acl(struct user_namespace *userns, struct inode *inode,
 		},
 	};
 
+	inode = d_inode(dentry);
 	IMustLock(inode);
-
-	if (inode->i_ino == AUFS_ROOT_INO)
-		dentry = dget(inode->i_sb->s_root);
-	else {
-		dentry = d_find_alias(inode);
-		if (!dentry)
-			dentry = d_find_any_alias(inode);
-		if (!dentry) {
-			pr_warn("cannot handle this inode, "
-				"please report to aufs-users ML\n");
-			err = -ENOENT;
-			goto out;
-		}
-	}
 
 	ssz = au_sxattr(dentry, inode, &arg);
 	/* forget even it if succeeds since the branch might set differently */
 	forget_cached_acl(inode, type);
-	dput(dentry);
 	err = ssz;
 	if (ssz >= 0)
 		err = 0;
 
-out:
 	return err;
 }

@@ -55,30 +55,44 @@ static int au_do_cpup_xattr(struct path *h_dst, struct path *h_src,
 			    char *name, char **buf, unsigned int ignore_flags,
 			    unsigned int verbose)
 {
-	int err;
+	int err, is_acl;
 	ssize_t ssz;
 	struct inode *h_idst;
 	struct dentry *h_dst_dentry, *h_src_dentry;
 	struct user_namespace *h_dst_userns, *h_src_userns;
+	struct posix_acl *acl;
 
+	is_acl = !!is_posix_acl_xattr(name);
 	h_src_userns = mnt_user_ns(h_src->mnt);
 	h_src_dentry = h_src->dentry;
-	ssz = vfs_getxattr_alloc(h_src_userns, h_src_dentry, name, buf, 0,
-				 GFP_NOFS);
-	err = ssz;
-	if (unlikely(err <= 0)) {
-		if (err == -ENODATA
-		    || (err == -EOPNOTSUPP
-			&& ((ignore_flags & au_xattr_out_of_list)
-			    || (au_test_nfs_noacl(d_inode(h_src_dentry))
-				&& (!strcmp(name, XATTR_NAME_POSIX_ACL_ACCESS)
-				    || !strcmp(name,
-					       XATTR_NAME_POSIX_ACL_DEFAULT))))
-			    ))
-			err = 0;
-		if (err && (verbose || au_debug_test()))
-			pr_err("%s, err %d\n", name, err);
-		goto out;
+	if (is_acl) {
+		acl = vfs_get_acl(h_src_userns, h_src_dentry, name);
+		AuDebugOn(!acl);
+		if (unlikely(IS_ERR(acl))) {
+			err = PTR_ERR(acl);
+			if (err == -ENODATA)
+				err = 0;
+			else if (err == -EOPNOTSUPP
+				 && au_test_nfs_noacl(d_inode(h_src_dentry)))
+				err = 0;
+			else if (verbose || au_debug_test())
+				pr_err("%s, err %d\n", name, err);
+			goto out;
+		}
+	} else {
+		ssz = vfs_getxattr_alloc(h_src_userns, h_src_dentry, name, buf,
+					 0, GFP_NOFS);
+		if (unlikely(ssz <= 0)) {
+			err = ssz;
+			if (err == -ENODATA)
+				err = 0;
+			else if (err == -EOPNOTSUPP
+				 && (ignore_flags & au_xattr_out_of_list))
+				 err = 0;
+			else if (err && (verbose || au_debug_test()))
+				pr_err("%s, err %d\n", name, err);
+			goto out;
+		}
 	}
 
 	/* unlock it temporary */
@@ -86,8 +100,12 @@ static int au_do_cpup_xattr(struct path *h_dst, struct path *h_src,
 	h_dst_dentry = h_dst->dentry;
 	h_idst = d_inode(h_dst_dentry);
 	inode_unlock(h_idst);
-	err = vfsub_setxattr(h_dst_userns, h_dst_dentry, name, *buf, ssz,
-			     /*flags*/0);
+	if (is_acl) {
+		err = vfsub_set_acl(h_dst_userns, h_dst_dentry, name, acl);
+		posix_acl_release(acl);
+	} else
+		err = vfsub_setxattr(h_dst_userns, h_dst_dentry, name, *buf,
+				     ssz, /*flags*/0);
 	inode_lock_nested(h_idst, AuLsc_I_CHILD2);
 	if (unlikely(err)) {
 		if (verbose || au_debug_test())
@@ -102,7 +120,7 @@ out:
 int au_cpup_xattr(struct path *h_dst, struct path *h_src, int ignore_flags,
 		  unsigned int verbose)
 {
-	int err, unlocked, acl_access, acl_default;
+	int err, unlocked;
 	ssize_t ssz;
 	struct dentry *h_dst_dentry, *h_src_dentry;
 	struct inode *h_isrc, *h_idst;
@@ -150,33 +168,12 @@ int au_cpup_xattr(struct path *h_dst, struct path *h_src, int ignore_flags,
 	err = 0;
 	e = p + ssz;
 	value = NULL;
-	acl_access = 0;
-	acl_default = 0;
+	ignore_flags |= au_xattr_out_of_list;
 	while (!err && p < e) {
-		acl_access |= !strncmp(p, XATTR_NAME_POSIX_ACL_ACCESS,
-				       sizeof(XATTR_NAME_POSIX_ACL_ACCESS) - 1);
-		acl_default |= !strncmp(p, XATTR_NAME_POSIX_ACL_DEFAULT,
-					sizeof(XATTR_NAME_POSIX_ACL_DEFAULT)
-					- 1);
 		err = au_do_cpup_xattr(h_dst, h_src, p, &value, ignore_flags,
 				       verbose);
 		p += strlen(p) + 1;
 	}
-	AuTraceErr(err);
-	ignore_flags |= au_xattr_out_of_list;
-	if (!err && !acl_access) {
-		err = au_do_cpup_xattr(h_dst, h_src,
-				       XATTR_NAME_POSIX_ACL_ACCESS, &value,
-				       ignore_flags, verbose);
-		AuTraceErr(err);
-	}
-	if (!err && !acl_default) {
-		err = au_do_cpup_xattr(h_dst, h_src,
-				       XATTR_NAME_POSIX_ACL_DEFAULT, &value,
-				       ignore_flags, verbose);
-		AuTraceErr(err);
-	}
-
 	au_kfree_try_rcu(value);
 
 out_free:
