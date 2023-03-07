@@ -84,7 +84,7 @@ int au_may_del(struct dentry *dentry, aufs_bindex_t bindex,
 	struct path h_ppath;
 	struct super_block *sb;
 	struct au_branch *br;
-	struct user_namespace *h_userns;
+	struct mnt_idmap *h_idmap;
 
 	h_dentry = au_h_dptr(dentry, bindex);
 	if (d_really_is_positive(dentry)) {
@@ -124,15 +124,15 @@ int au_may_del(struct dentry *dentry, aufs_bindex_t bindex,
 	err = -EACCES;
 	sb = dentry->d_sb;
 	br = au_sbr(sb, bindex);
-	h_userns = au_br_userns(br);
+	h_idmap = au_br_idmap(br);
 	if (unlikely(!au_opt_test(au_mntflags(sb), DIRPERM1)
-		     && au_test_h_perm(h_userns, d_inode(h_parent),
+		     && au_test_h_perm(h_idmap, d_inode(h_parent),
 				       MAY_EXEC | MAY_WRITE)))
 		goto out;
 
 	h_ppath.dentry = h_parent;
 	h_ppath.mnt = au_br_mnt(br);
-	h_latest = au_sio_lkup_one(h_userns, &dentry->d_name, &h_ppath);
+	h_latest = au_sio_lkup_one(h_idmap, &dentry->d_name, &h_ppath);
 	err = -EIO;
 	if (IS_ERR(h_latest))
 		goto out;

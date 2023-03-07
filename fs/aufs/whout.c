@@ -51,7 +51,7 @@ int au_wh_name_alloc(struct qstr *wh, const struct qstr *name)
  * test if the @wh_name exists under @h_ppath.
  * @try_sio specifies the necessary of super-io.
  */
-int au_wh_test(struct user_namespace *h_userns, struct path *h_ppath,
+int au_wh_test(struct mnt_idmap *h_idmap, struct path *h_ppath,
 	       struct qstr *wh_name, int try_sio)
 {
 	int err;
@@ -60,7 +60,7 @@ int au_wh_test(struct user_namespace *h_userns, struct path *h_ppath,
 	if (!try_sio)
 		wh_dentry = vfsub_lkup_one(wh_name, h_ppath);
 	else
-		wh_dentry = au_sio_lkup_one(h_userns, wh_name, h_ppath);
+		wh_dentry = au_sio_lkup_one(h_idmap, wh_name, h_ppath);
 	err = PTR_ERR(wh_dentry);
 	if (IS_ERR(wh_dentry)) {
 		if (err == -ENAMETOOLONG)
@@ -89,14 +89,14 @@ out:
 /*
  * test if the @h_path->dentry sets opaque or not.
  */
-int au_diropq_test(struct user_namespace *h_userns, struct path *h_path)
+int au_diropq_test(struct mnt_idmap *h_idmap, struct path *h_path)
 {
 	int err;
 	struct inode *h_dir;
 
 	h_dir = d_inode(h_path->dentry);
-	err = au_wh_test(h_userns, h_path, &diropq_name,
-			 au_test_h_perm_sio(h_userns, h_dir, MAY_EXEC));
+	err = au_wh_test(h_idmap, h_path, &diropq_name,
+			 au_test_h_perm_sio(h_idmap, h_dir, MAY_EXEC));
 	return err;
 }
 
@@ -114,7 +114,7 @@ struct dentry *au_whtmp_lkup(struct dentry *h_parent, struct au_branch *br,
 	static unsigned short cnt;
 	struct qstr qs;
 	struct path h_ppath;
-	struct user_namespace *h_userns;
+	struct mnt_idmap *h_idmap;
 
 	BUILD_BUG_ON(sizeof(cnt) * 2 > AUFS_WH_TMP_LEN);
 
@@ -140,11 +140,11 @@ struct dentry *au_whtmp_lkup(struct dentry *h_parent, struct au_branch *br,
 
 	h_ppath.dentry = h_parent;
 	h_ppath.mnt = au_br_mnt(br);
-	h_userns = au_br_userns(br);
+	h_idmap = au_br_idmap(br);
 	qs.name = name;
 	for (i = 0; i < 3; i++) {
 		sprintf(p, "%.*x", AUFS_WH_TMP_LEN, cnt++);
-		dentry = au_sio_lkup_one(h_userns, &qs, &h_ppath);
+		dentry = au_sio_lkup_one(h_idmap, &qs, &h_ppath);
 		if (IS_ERR(dentry) || d_is_negative(dentry))
 			goto out_name;
 		dput(dentry);
@@ -741,11 +741,11 @@ struct dentry *au_diropq_sio(struct dentry *dentry, aufs_bindex_t bindex,
 			     unsigned int flags)
 {
 	struct dentry *diropq, *h_dentry;
-	struct user_namespace *h_userns;
+	struct mnt_idmap *h_idmap;
 
-	h_userns = au_sbr_userns(dentry->d_sb, bindex);
+	h_idmap = au_sbr_idmap(dentry->d_sb, bindex);
 	h_dentry = au_h_dptr(dentry, bindex);
-	if (!au_test_h_perm_sio(h_userns, d_inode(h_dentry),
+	if (!au_test_h_perm_sio(h_idmap, d_inode(h_dentry),
 				MAY_EXEC | MAY_WRITE))
 		diropq = do_diropq(dentry, bindex, flags);
 	else {
@@ -934,7 +934,7 @@ int au_whtmp_rmdir(struct inode *dir, aufs_bindex_t bindex,
 	struct path wh_path;
 	struct inode *wh_inode, *h_dir;
 	struct au_branch *br;
-	struct user_namespace *h_userns;
+	struct mnt_idmap *h_idmap;
 
 	h_dir = d_inode(wh_dentry->d_parent); /* dir inode is locked */
 	IMustLock(h_dir);
@@ -942,7 +942,7 @@ int au_whtmp_rmdir(struct inode *dir, aufs_bindex_t bindex,
 	br = au_sbr(dir->i_sb, bindex);
 	wh_path.dentry = wh_dentry;
 	wh_path.mnt = au_br_mnt(br);
-	h_userns = au_br_userns(br);
+	h_idmap = au_br_idmap(br);
 	wh_inode = d_inode(wh_dentry);
 	inode_lock_nested(wh_inode, AuLsc_I_CHILD);
 
@@ -950,7 +950,7 @@ int au_whtmp_rmdir(struct inode *dir, aufs_bindex_t bindex,
 	 * someone else might change some whiteouts while we were sleeping.
 	 * it means this whlist may have an obsoleted entry.
 	 */
-	if (!au_test_h_perm_sio(h_userns, wh_inode, MAY_EXEC | MAY_WRITE))
+	if (!au_test_h_perm_sio(h_idmap, wh_inode, MAY_EXEC | MAY_WRITE))
 		err = del_wh_children(&wh_path, whlist, bindex);
 	else {
 		int wkq_err;

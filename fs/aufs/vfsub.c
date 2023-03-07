@@ -235,7 +235,7 @@ int vfsub_create(struct inode *dir, struct path *path, int mode, bool want_excl)
 {
 	int err;
 	struct dentry *d;
-	struct user_namespace *userns;
+	struct mnt_idmap *idmap;
 
 	IMustLock(dir);
 
@@ -245,10 +245,10 @@ int vfsub_create(struct inode *dir, struct path *path, int mode, bool want_excl)
 	path->dentry = d;
 	if (unlikely(err))
 		goto out;
-	userns = mnt_user_ns(path->mnt);
+	idmap = mnt_idmap(path->mnt);
 
 	lockdep_off();
-	err = vfs_create(userns, dir, path->dentry, mode, want_excl);
+	err = vfs_create(idmap, dir, path->dentry, mode, want_excl);
 	lockdep_on();
 	if (!err) {
 		struct path tmp = *path;
@@ -270,7 +270,7 @@ int vfsub_symlink(struct inode *dir, struct path *path, const char *symname)
 {
 	int err;
 	struct dentry *d;
-	struct user_namespace *userns;
+	struct mnt_idmap *idmap;
 
 	IMustLock(dir);
 
@@ -280,10 +280,10 @@ int vfsub_symlink(struct inode *dir, struct path *path, const char *symname)
 	path->dentry = d;
 	if (unlikely(err))
 		goto out;
-	userns = mnt_user_ns(path->mnt);
+	idmap = mnt_idmap(path->mnt);
 
 	lockdep_off();
-	err = vfs_symlink(userns, dir, path->dentry, symname);
+	err = vfs_symlink(idmap, dir, path->dentry, symname);
 	lockdep_on();
 	if (!err) {
 		struct path tmp = *path;
@@ -305,7 +305,7 @@ int vfsub_mknod(struct inode *dir, struct path *path, int mode, dev_t dev)
 {
 	int err;
 	struct dentry *d;
-	struct user_namespace *userns;
+	struct mnt_idmap *idmap;
 
 	IMustLock(dir);
 
@@ -315,10 +315,10 @@ int vfsub_mknod(struct inode *dir, struct path *path, int mode, dev_t dev)
 	path->dentry = d;
 	if (unlikely(err))
 		goto out;
-	userns = mnt_user_ns(path->mnt);
+	idmap = mnt_idmap(path->mnt);
 
 	lockdep_off();
-	err = vfs_mknod(userns, dir, path->dentry, mode, dev);
+	err = vfs_mknod(idmap, dir, path->dentry, mode, dev);
 	lockdep_on();
 	if (!err) {
 		struct path tmp = *path;
@@ -351,7 +351,7 @@ int vfsub_link(struct dentry *src_dentry, struct inode *dir, struct path *path,
 {
 	int err;
 	struct dentry *d;
-	struct user_namespace *userns;
+	struct mnt_idmap *idmap;
 
 	IMustLock(dir);
 
@@ -366,10 +366,10 @@ int vfsub_link(struct dentry *src_dentry, struct inode *dir, struct path *path,
 	path->dentry = d;
 	if (unlikely(err))
 		goto out;
-	userns = mnt_user_ns(path->mnt);
+	idmap = mnt_idmap(path->mnt);
 
 	lockdep_off();
-	err = vfs_link(src_dentry, userns, dir, path->dentry, delegated_inode);
+	err = vfs_link(src_dentry, idmap, dir, path->dentry, delegated_inode);
 	lockdep_on();
 	if (!err) {
 		struct path tmp = *path;
@@ -412,10 +412,10 @@ int vfsub_rename(struct inode *src_dir, struct dentry *src_dentry,
 	if (unlikely(err))
 		goto out;
 
-	rd.old_mnt_userns = mnt_user_ns(path->mnt);
+	rd.old_mnt_idmap = mnt_idmap(path->mnt);
 	rd.old_dir = src_dir;
 	rd.old_dentry = src_dentry;
-	rd.new_mnt_userns = rd.old_mnt_userns;
+	rd.new_mnt_idmap = rd.old_mnt_idmap;
 	rd.new_dir = dir;
 	rd.new_dentry = path->dentry;
 	rd.delegated_inode = delegated_inode;
@@ -445,7 +445,7 @@ int vfsub_mkdir(struct inode *dir, struct path *path, int mode)
 {
 	int err;
 	struct dentry *d;
-	struct user_namespace *userns;
+	struct mnt_idmap *idmap;
 
 	IMustLock(dir);
 
@@ -455,10 +455,10 @@ int vfsub_mkdir(struct inode *dir, struct path *path, int mode)
 	path->dentry = d;
 	if (unlikely(err))
 		goto out;
-	userns = mnt_user_ns(path->mnt);
+	idmap = mnt_idmap(path->mnt);
 
 	lockdep_off();
-	err = vfs_mkdir(userns, dir, path->dentry, mode);
+	err = vfs_mkdir(idmap, dir, path->dentry, mode);
 	lockdep_on();
 	if (!err) {
 		struct path tmp = *path;
@@ -480,7 +480,7 @@ int vfsub_rmdir(struct inode *dir, struct path *path)
 {
 	int err;
 	struct dentry *d;
-	struct user_namespace *userns;
+	struct mnt_idmap *idmap;
 
 	IMustLock(dir);
 
@@ -490,10 +490,10 @@ int vfsub_rmdir(struct inode *dir, struct path *path)
 	path->dentry = d;
 	if (unlikely(err))
 		goto out;
-	userns = mnt_user_ns(path->mnt);
+	idmap = mnt_idmap(path->mnt);
 
 	lockdep_off();
-	err = vfs_rmdir(userns, dir, path->dentry);
+	err = vfs_rmdir(idmap, dir, path->dentry);
 	lockdep_on();
 	if (!err) {
 		struct path tmp = {
@@ -651,7 +651,7 @@ int vfsub_trunc(struct path *h_path, loff_t length, unsigned int attr,
 	int err;
 	struct inode *h_inode;
 	struct super_block *h_sb;
-	struct user_namespace *h_userns;
+	struct mnt_idmap *h_idmap;
 
 	if (!h_file) {
 		err = vfsub_truncate(h_path, length);
@@ -665,9 +665,9 @@ int vfsub_trunc(struct path *h_path, loff_t length, unsigned int attr,
 	lockdep_on();
 	err = security_file_truncate(h_file);
 	if (!err) {
-		h_userns = mnt_user_ns(h_path->mnt);
+		h_idmap = mnt_idmap(h_path->mnt);
 		lockdep_off();
-		err = do_truncate(h_userns, h_path->dentry, length, attr,
+		err = do_truncate(h_idmap, h_path->dentry, length, attr,
 				  h_file);
 		lockdep_on();
 	}
@@ -697,10 +697,10 @@ static void au_call_vfsub_mkdir(void *args)
 int vfsub_sio_mkdir(struct inode *dir, struct path *path, int mode)
 {
 	int err, do_sio, wkq_err;
-	struct user_namespace *userns;
+	struct mnt_idmap *idmap;
 
-	userns = mnt_user_ns(path->mnt);
-	do_sio = au_test_h_perm_sio(userns, dir, MAY_EXEC | MAY_WRITE);
+	idmap = mnt_idmap(path->mnt);
+	do_sio = au_test_h_perm_sio(idmap, dir, MAY_EXEC | MAY_WRITE);
 	if (!do_sio) {
 		lockdep_off();
 		err = vfsub_mkdir(dir, path, mode);
@@ -735,10 +735,10 @@ static void au_call_vfsub_rmdir(void *args)
 int vfsub_sio_rmdir(struct inode *dir, struct path *path)
 {
 	int err, do_sio, wkq_err;
-	struct user_namespace *userns;
+	struct mnt_idmap *idmap;
 
-	userns = mnt_user_ns(path->mnt);
-	do_sio = au_test_h_perm_sio(userns, dir, MAY_EXEC | MAY_WRITE);
+	idmap = mnt_idmap(path->mnt);
+	do_sio = au_test_h_perm_sio(idmap, dir, MAY_EXEC | MAY_WRITE);
 	if (!do_sio) {
 		lockdep_off();
 		err = vfsub_rmdir(dir, path);
@@ -770,16 +770,16 @@ static void call_notify_change(void *args)
 {
 	struct notify_change_args *a = args;
 	struct inode *h_inode;
-	struct user_namespace *userns;
+	struct mnt_idmap *idmap;
 
 	h_inode = d_inode(a->path->dentry);
 	IMustLock(h_inode);
 
 	*a->errp = -EPERM;
 	if (!IS_IMMUTABLE(h_inode) && !IS_APPEND(h_inode)) {
-		userns = mnt_user_ns(a->path->mnt);
+		idmap = mnt_idmap(a->path->mnt);
 		lockdep_off();
-		*a->errp = notify_change(userns, a->path->dentry, a->ia,
+		*a->errp = notify_change(idmap, a->path->dentry, a->ia,
 					 a->delegated_inode);
 		lockdep_on();
 		if (!*a->errp)
@@ -836,7 +836,7 @@ static void call_unlink(void *args)
 	struct unlink_args *a = args;
 	struct dentry *d = a->path->dentry;
 	struct inode *h_inode;
-	struct user_namespace *userns;
+	struct mnt_idmap *idmap;
 	const int stop_sillyrename = (au_test_nfs(d->d_sb)
 				      && au_dcount(d) == 1);
 
@@ -856,9 +856,9 @@ static void call_unlink(void *args)
 		ihold(h_inode);
 	}
 
-	userns = mnt_user_ns(a->path->mnt);
+	idmap = mnt_idmap(a->path->mnt);
 	lockdep_off();
-	*a->errp = vfs_unlink(userns, a->dir, d, a->delegated_inode);
+	*a->errp = vfs_unlink(idmap, a->dir, d, a->delegated_inode);
 	lockdep_on();
 	if (!*a->errp) {
 		struct path tmp = {
