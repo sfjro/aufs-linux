@@ -59,14 +59,14 @@ static int au_do_cpup_xattr(struct path *h_dst, struct path *h_src,
 	ssize_t ssz;
 	struct inode *h_idst;
 	struct dentry *h_dst_dentry, *h_src_dentry;
-	struct user_namespace *h_dst_userns, *h_src_userns;
+	struct mnt_idmap *h_dst_idmap, *h_src_idmap;
 	struct posix_acl *acl;
 
 	is_acl = !!is_posix_acl_xattr(name);
-	h_src_userns = mnt_user_ns(h_src->mnt);
+	h_src_idmap = mnt_idmap(h_src->mnt);
 	h_src_dentry = h_src->dentry;
 	if (is_acl) {
-		acl = vfs_get_acl(h_src_userns, h_src_dentry, name);
+		acl = vfs_get_acl(h_src_idmap, h_src_dentry, name);
 		AuDebugOn(!acl);
 		if (unlikely(IS_ERR(acl))) {
 			err = PTR_ERR(acl);
@@ -80,7 +80,7 @@ static int au_do_cpup_xattr(struct path *h_dst, struct path *h_src,
 			goto out;
 		}
 	} else {
-		ssz = vfs_getxattr_alloc(h_src_userns, h_src_dentry, name, buf,
+		ssz = vfs_getxattr_alloc(h_src_idmap, h_src_dentry, name, buf,
 					 0, GFP_NOFS);
 		if (unlikely(ssz <= 0)) {
 			err = ssz;
@@ -96,15 +96,15 @@ static int au_do_cpup_xattr(struct path *h_dst, struct path *h_src,
 	}
 
 	/* unlock it temporary */
-	h_dst_userns = mnt_user_ns(h_dst->mnt);
+	h_dst_idmap = mnt_idmap(h_dst->mnt);
 	h_dst_dentry = h_dst->dentry;
 	h_idst = d_inode(h_dst_dentry);
 	inode_unlock(h_idst);
 	if (is_acl) {
-		err = vfsub_set_acl(h_dst_userns, h_dst_dentry, name, acl);
+		err = vfsub_set_acl(h_dst_idmap, h_dst_dentry, name, acl);
 		posix_acl_release(acl);
 	} else
-		err = vfsub_setxattr(h_dst_userns, h_dst_dentry, name, *buf,
+		err = vfsub_setxattr(h_dst_idmap, h_dst_dentry, name, *buf,
 				     ssz, /*flags*/0);
 	inode_lock_nested(h_idst, AuLsc_I_CHILD2);
 	if (unlikely(err)) {
@@ -250,7 +250,7 @@ static ssize_t au_lgxattr(struct dentry *dentry, struct inode *inode,
 		break;
 	case AU_XATTR_GET:
 		AuDebugOn(d_is_negative(h_path.dentry));
-		err = vfs_getxattr(mnt_user_ns(h_path.mnt), h_path.dentry,
+		err = vfs_getxattr(mnt_idmap(h_path.mnt), h_path.dentry,
 				   arg->u.get.name, arg->u.get.value,
 				   arg->u.get.size);
 		break;
@@ -322,7 +322,7 @@ static int au_xattr_get(const struct xattr_handler *handler,
 }
 
 static int au_xattr_set(const struct xattr_handler *handler,
-			struct user_namespace *userns,
+			struct mnt_idmap *idmap,
 			struct dentry *dentry, struct inode *inode,
 			const char *name, const void *value, size_t size,
 			int flags)

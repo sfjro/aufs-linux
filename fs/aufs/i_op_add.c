@@ -353,7 +353,7 @@ out:
 	return err;
 }
 
-int aufs_mknod(struct user_namespace *userns, struct inode *dir,
+int aufs_mknod(struct mnt_idmap *idmap, struct inode *dir,
 	       struct dentry *dentry, umode_t mode, dev_t dev)
 {
 	struct simple_arg arg = {
@@ -366,7 +366,7 @@ int aufs_mknod(struct user_namespace *userns, struct inode *dir,
 	return add_simple(dir, dentry, &arg);
 }
 
-int aufs_symlink(struct user_namespace *userns, struct inode *dir,
+int aufs_symlink(struct mnt_idmap *idmap, struct inode *dir,
 		 struct dentry *dentry, const char *symname)
 {
 	struct simple_arg arg = {
@@ -376,7 +376,7 @@ int aufs_symlink(struct user_namespace *userns, struct inode *dir,
 	return add_simple(dir, dentry, &arg);
 }
 
-int aufs_create(struct user_namespace *userns, struct inode *dir,
+int aufs_create(struct mnt_idmap *idmap, struct inode *dir,
 		struct dentry *dentry, umode_t mode, bool want_excl)
 {
 	struct simple_arg arg = {
@@ -404,7 +404,7 @@ int au_aopen_or_create(struct inode *dir, struct dentry *dentry,
 	return add_simple(dir, dentry, &arg);
 }
 
-int aufs_tmpfile(struct user_namespace *userns, struct inode *dir,
+int aufs_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
 		 struct file *file, umode_t mode)
 {
 	int err;
@@ -415,7 +415,7 @@ int aufs_tmpfile(struct user_namespace *userns, struct inode *dir,
 	struct dentry *dentry, *parent, *h_parent, *h_dentry;
 	struct inode *h_dir, *inode;
 	struct vfsmount *h_mnt;
-	struct user_namespace *h_userns;
+	struct mnt_idmap *h_idmap;
 	struct file *h_file;
 	struct au_wr_dir_args wr_dir_args = {
 		.force_btgt	= -1,
@@ -466,11 +466,11 @@ int aufs_tmpfile(struct user_namespace *userns, struct inode *dir,
 	if (unlikely(err))
 		goto out_parent;
 
-	h_userns = mnt_user_ns(h_mnt);
+	h_idmap = mnt_idmap(h_mnt);
 	h_parent = au_h_dptr(parent, bindex);
 	h_ppath.mnt = h_mnt;
 	h_ppath.dentry = h_parent;
-	h_file = vfs_tmpfile_open(h_userns, &h_ppath, mode, /*open_flag*/0,
+	h_file = vfs_tmpfile_open(h_idmap, &h_ppath, mode, /*open_flag*/0,
 				  current_cred());
 	if (IS_ERR(h_file)) {
 		err = PTR_ERR(h_file);
@@ -849,7 +849,7 @@ out:
 	return err;
 }
 
-int aufs_mkdir(struct user_namespace *userns, struct inode *dir,
+int aufs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 	       struct dentry *dentry, umode_t mode)
 {
 	int err, rerr;

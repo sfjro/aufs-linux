@@ -624,14 +624,14 @@ static int sio_test_empty(struct dentry *dentry, struct test_empty_arg *arg)
 	int err, wkq_err;
 	struct dentry *h_dentry;
 	struct inode *h_inode;
-	struct user_namespace *h_userns;
+	struct mnt_idmap *h_idmap;
 
-	h_userns = au_sbr_userns(dentry->d_sb, arg->bindex);
+	h_idmap = au_sbr_idmap(dentry->d_sb, arg->bindex);
 	h_dentry = au_h_dptr(dentry, arg->bindex);
 	h_inode = d_inode(h_dentry);
 	/* todo: i_mode changes anytime? */
 	inode_lock_shared_nested(h_inode, AuLsc_I_CHILD);
-	err = au_test_h_perm_sio(h_userns, h_inode, MAY_EXEC | MAY_READ);
+	err = au_test_h_perm_sio(h_idmap, h_inode, MAY_EXEC | MAY_READ);
 	inode_unlock_shared(h_inode);
 	if (!err)
 		err = do_test_empty(dentry, arg);

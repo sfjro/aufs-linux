@@ -581,18 +581,18 @@ static int au_reset_acl(struct path *h_path, umode_t mode)
 	int err;
 	struct dentry *h_dentry;
 	/* struct inode *h_inode; */
-	struct user_namespace *h_userns;
+	struct mnt_idmap *h_idmap;
 
-	h_userns = mnt_user_ns(h_path->mnt);
+	h_idmap = mnt_idmap(h_path->mnt);
 	h_dentry = h_path->dentry;
 	/* h_inode = d_inode(h_dentry); */
 	/* forget_all_cached_acls(h_inode)); */
-	err = vfsub_remove_acl(h_userns, h_dentry, XATTR_NAME_POSIX_ACL_ACCESS);
+	err = vfsub_remove_acl(h_idmap, h_dentry, XATTR_NAME_POSIX_ACL_ACCESS);
 	AuTraceErr(err);
 	if (err == -EOPNOTSUPP)
 		err = 0;
 	if (!err)
-		err = vfsub_acl_chmod(h_userns, h_dentry, mode);
+		err = vfsub_acl_chmod(h_idmap, h_dentry, mode);
 
 	AuTraceErr(err);
 	return err;
@@ -603,10 +603,10 @@ static int au_do_cpup_dir(struct au_cp_generic *cpg, struct dentry *dst_parent,
 {
 	int err;
 	struct inode *dir, *inode;
-	struct user_namespace *h_userns;
+	struct mnt_idmap *h_idmap;
 
-	h_userns = mnt_user_ns(h_path->mnt);
-	err = vfsub_remove_acl(h_userns, h_path->dentry,
+	h_idmap = mnt_idmap(h_path->mnt);
+	err = vfsub_remove_acl(h_idmap, h_path->dentry,
 			       XATTR_NAME_POSIX_ACL_DEFAULT);
 	AuTraceErr(err);
 	if (err == -EOPNOTSUPP)
@@ -1086,7 +1086,7 @@ static int au_do_sio_cpup_simple(struct au_cp_generic *cpg)
 	struct dentry *dentry, *parent;
 	struct file *h_file;
 	struct inode *h_dir;
-	struct user_namespace *h_userns;
+	struct mnt_idmap *h_idmap;
 
 	dentry = cpg->dentry;
 	h_file = NULL;
@@ -1100,8 +1100,8 @@ static int au_do_sio_cpup_simple(struct au_cp_generic *cpg)
 
 	parent = dget_parent(dentry);
 	h_dir = au_h_iptr(d_inode(parent), cpg->bdst);
-	h_userns = au_sbr_userns(dentry->d_sb, cpg->bdst);
-	if (!au_test_h_perm_sio(h_userns, h_dir, MAY_EXEC | MAY_WRITE)
+	h_idmap = au_sbr_idmap(dentry->d_sb, cpg->bdst);
+	if (!au_test_h_perm_sio(h_idmap, h_dir, MAY_EXEC | MAY_WRITE)
 	    && !au_cpup_sio_test(cpg->pin, d_inode(dentry)->i_mode))
 		err = au_cpup_simple(cpg);
 	else {
@@ -1271,7 +1271,7 @@ int au_sio_cpup_wh(struct au_cp_generic *cpg, struct file *file)
 	struct inode *dir, *h_dir, *h_tmpdir;
 	struct au_wbr *wbr;
 	struct au_pin wh_pin, *pin_orig;
-	struct user_namespace *h_userns;
+	struct mnt_idmap *h_idmap;
 
 	dentry = cpg->dentry;
 	bdst = cpg->bdst;
@@ -1300,8 +1300,8 @@ int au_sio_cpup_wh(struct au_cp_generic *cpg, struct file *file)
 		cpg->pin = &wh_pin;
 	}
 
-	h_userns = au_sbr_userns(dentry->d_sb, bdst);
-	if (!au_test_h_perm_sio(h_userns, h_tmpdir, MAY_EXEC | MAY_WRITE)
+	h_idmap = au_sbr_idmap(dentry->d_sb, bdst);
+	if (!au_test_h_perm_sio(h_idmap, h_tmpdir, MAY_EXEC | MAY_WRITE)
 	    && !au_cpup_sio_test(cpg->pin, d_inode(dentry)->i_mode))
 		err = au_cpup_wh(cpg, file);
 	else {

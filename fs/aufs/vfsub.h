@@ -221,18 +221,18 @@ static inline int vfsub_update_time(struct inode *h_inode,
 }
 
 #ifdef CONFIG_FS_POSIX_ACL
-static inline int vfsub_acl_chmod(struct user_namespace *h_userns,
+static inline int vfsub_acl_chmod(struct mnt_idmap *h_idmap,
 				  struct dentry *h_dentry, umode_t h_mode)
 {
 	int err;
 
-	err = posix_acl_chmod(h_userns, h_dentry, h_mode);
+	err = posix_acl_chmod(h_idmap, h_dentry, h_mode);
 	if (err == -EOPNOTSUPP)
 		err = 0;
 	return err;
 }
 #else
-AuStubInt0(vfsub_acl_chmod, struct user_namespace *h_userns,
+AuStubInt0(vfsub_acl_chmod, struct mnt_idmap *h_idmap,
 	   struct dentry *h_dentry, umode_t h_mode);
 #endif
 
@@ -316,60 +316,60 @@ static inline int vfsub_getattr(const struct path *path, struct kstat *st)
 
 /* ---------------------------------------------------------------------- */
 
-static inline int vfsub_setxattr(struct user_namespace *userns,
+static inline int vfsub_setxattr(struct mnt_idmap *idmap,
 				 struct dentry *dentry, const char *name,
 				 const void *value, size_t size, int flags)
 {
 	int err;
 
 	lockdep_off();
-	err = vfs_setxattr(userns, dentry, name, value, size, flags);
+	err = vfs_setxattr(idmap, dentry, name, value, size, flags);
 	lockdep_on();
 
 	return err;
 }
 
-static inline int vfsub_removexattr(struct user_namespace *userns,
+static inline int vfsub_removexattr(struct mnt_idmap *idmap,
 				    struct dentry *dentry, const char *name)
 {
 	int err;
 
 	lockdep_off();
-	err = vfs_removexattr(userns, dentry, name);
+	err = vfs_removexattr(idmap, dentry, name);
 	lockdep_on();
 
 	return err;
 }
 
 #ifdef CONFIG_FS_POSIX_ACL
-static inline int vfsub_set_acl(struct user_namespace *userns,
+static inline int vfsub_set_acl(struct mnt_idmap *idmap,
 				struct dentry *dentry, const char *name,
 				struct posix_acl *acl)
 {
 	int err;
 
 	lockdep_off();
-	err = vfs_set_acl(userns, dentry, name, acl);
+	err = vfs_set_acl(idmap, dentry, name, acl);
 	lockdep_on();
 
 	return err;
 }
 
-static inline int vfsub_remove_acl(struct user_namespace *userns,
+static inline int vfsub_remove_acl(struct mnt_idmap *idmap,
 				   struct dentry *dentry, const char *name)
 {
 	int err;
 
 	lockdep_off();
-	err = vfs_remove_acl(userns, dentry, name);
+	err = vfs_remove_acl(idmap, dentry, name);
 	lockdep_on();
 
 	return err;
 }
 #else
-AuStubInt0(vfsub_set_acl, struct user_namespace *userns, struct dentry *dentry,
+AuStubInt0(vfsub_set_acl, struct mnt_idmap *idmap, struct dentry *dentry,
 	   const char *name, struct posix_acl *acl);
-AuStubInt0(vfsub_remove_acl, struct user_namespace *userns,
+AuStubInt0(vfsub_remove_acl, struct mnt_idmap *idmap,
 	   struct dentry *dentry, const char *name);
 #endif
 

@@ -55,7 +55,7 @@ out:
 	return acl;
 }
 
-struct posix_acl *aufs_get_acl(struct user_namespace *userns,
+struct posix_acl *aufs_get_acl(struct mnt_idmap *idmap,
 			       struct dentry *dentry, int type)
 {
 	struct posix_acl *acl;
@@ -67,7 +67,7 @@ struct posix_acl *aufs_get_acl(struct user_namespace *userns,
 	return acl;
 }
 
-int aufs_set_acl(struct user_namespace *userns, struct dentry *dentry,
+int aufs_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
 		 struct posix_acl *acl, int type)
 {
 	int err;
