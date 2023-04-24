@@ -1980,8 +1980,7 @@ _nfs4_opendata_reclaim_to_nfs4_state(struct nfs4_opendata *data)
 	if (!data->rpc_done) {
 		if (data->rpc_status)
 			return ERR_PTR(data->rpc_status);
-		/* cached opens have already been processed */
-		goto update;
+		return nfs4_try_open_cached(data);
 	}
 
 	ret = nfs_refresh_inode(inode, &data->f_attr);
@@ -1990,7 +1989,7 @@ _nfs4_opendata_reclaim_to_nfs4_state(struct nfs4_opendata *data)
 
 	if (data->o_res.delegation_type != 0)
 		nfs4_opendata_check_deleg(data, state);
-update:
+
 	if (!update_open_stateid(state, &data->o_res.stateid,
 				NULL, data->o_arg.fmode))
 		return ERR_PTR(-EAGAIN);
@@ -7692,7 +7691,7 @@ nfs4_release_lockowner(struct nfs_server *server, struct nfs4_lock_state *lsp)
 #define XATTR_NAME_NFSV4_ACL "system.nfs4_acl"
 
 static int nfs4_xattr_set_nfs4_acl(const struct xattr_handler *handler,
-				   struct user_namespace *mnt_userns,
+				   struct mnt_idmap *idmap,
 				   struct dentry *unused, struct inode *inode,
 				   const char *key, const void *buf,
 				   size_t buflen, int flags)
@@ -7716,7 +7715,7 @@ static bool nfs4_xattr_list_nfs4_acl(struct dentry *dentry)
 #define XATTR_NAME_NFSV4_DACL "system.nfs4_dacl"
 
 static int nfs4_xattr_set_nfs4_dacl(const struct xattr_handler *handler,
-				    struct user_namespace *mnt_userns,
+				    struct mnt_idmap *idmap,
 				    struct dentry *unused, struct inode *inode,
 				    const char *key, const void *buf,
 				    size_t buflen, int flags)
@@ -7739,7 +7738,7 @@ static bool nfs4_xattr_list_nfs4_dacl(struct dentry *dentry)
 #define XATTR_NAME_NFSV4_SACL "system.nfs4_sacl"
 
 static int nfs4_xattr_set_nfs4_sacl(const struct xattr_handler *handler,
-				    struct user_namespace *mnt_userns,
+				    struct mnt_idmap *idmap,
 				    struct dentry *unused, struct inode *inode,
 				    const char *key, const void *buf,
 				    size_t buflen, int flags)
@@ -7764,7 +7763,7 @@ static bool nfs4_xattr_list_nfs4_sacl(struct dentry *dentry)
 #ifdef CONFIG_NFS_V4_SECURITY_LABEL
 
 static int nfs4_xattr_set_nfs4_label(const struct xattr_handler *handler,
-				     struct user_namespace *mnt_userns,
+				     struct mnt_idmap *idmap,
 				     struct dentry *unused, struct inode *inode,
 				     const char *key, const void *buf,
 				     size_t buflen, int flags)
@@ -7815,7 +7814,7 @@ nfs4_listxattr_nfs4_label(struct inode *inode, char *list, size_t list_len)
 
 #ifdef CONFIG_NFS_V4_2
 static int nfs4_xattr_set_nfs4_user(const struct xattr_handler *handler,
-				    struct user_namespace *mnt_userns,
+				    struct mnt_idmap *idmap,
 				    struct dentry *unused, struct inode *inode,
 				    const char *key, const void *buf,
 				    size_t buflen, int flags)
@@ -10604,7 +10603,9 @@ static void nfs4_disable_swap(struct inode *inode)
 	/* The state manager thread will now exit once it is
 	 * woken.
 	 */
-	wake_up_var(&NFS_SERVER(inode)->nfs_client->cl_state);
+	struct nfs_client *clp = NFS_SERVER(inode)->nfs_client;
+
+	nfs4_schedule_state_manager(clp);
 }
 
 static const struct inode_operations nfs4_dir_inode_operations = {

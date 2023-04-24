@@ -71,7 +71,7 @@ static int nilfs_ioctl_wrap_copy(struct the_nilfs *nilfs,
 	if (argv->v_index > ~(__u64)0 - argv->v_nmembs)
 		return -EINVAL;
 
-	buf = (void *)__get_free_pages(GFP_NOFS, 0);
+	buf = (void *)get_zeroed_page(GFP_NOFS);
 	if (unlikely(!buf))
 		return -ENOMEM;
 	maxmembs = PAGE_SIZE / argv->v_size;
@@ -128,7 +128,7 @@ int nilfs_fileattr_get(struct dentry *dentry, struct fileattr *fa)
 /**
  * nilfs_fileattr_set - ioctl to support chattr
  */
-int nilfs_fileattr_set(struct user_namespace *mnt_userns,
+int nilfs_fileattr_set(struct mnt_idmap *idmap,
 		       struct dentry *dentry, struct fileattr *fa)
 {
 	struct inode *inode = d_inode(dentry);

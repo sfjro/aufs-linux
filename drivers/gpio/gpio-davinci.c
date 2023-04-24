@@ -252,7 +252,6 @@ static int davinci_gpio_probe(struct platform_device *pdev)
 	chips->chip.base = pdata->no_auto_base ? pdata->base : -1;
 
 #ifdef CONFIG_OF_GPIO
-	chips->chip.of_gpio_n_cells = 2;
 	chips->chip.parent = dev;
 	chips->chip.request = gpiochip_generic_request;
 	chips->chip.free = gpiochip_generic_free;
@@ -325,7 +324,7 @@ static struct irq_chip gpio_irqchip = {
 	.irq_enable	= gpio_irq_enable,
 	.irq_disable	= gpio_irq_disable,
 	.irq_set_type	= gpio_irq_type,
-	.flags		= IRQCHIP_SET_TYPE_MASKED,
+	.flags		= IRQCHIP_SET_TYPE_MASKED | IRQCHIP_SKIP_SET_WAKE,
 };
 
 static void gpio_irq_handler(struct irq_desc *desc)
@@ -534,7 +533,7 @@ static int davinci_gpio_irq_setup(struct platform_device *pdev)
 	}
 
 	/*
-	 * Arrange gpio_to_irq() support, handling either direct IRQs or
+	 * Arrange gpiod_to_irq() support, handling either direct IRQs or
 	 * banked IRQs.  Having GPIOs in the first GPIO bank use direct
 	 * IRQs, while the others use banked IRQs, would need some setup
 	 * tweaks to recognize hardware which can do that.
@@ -641,9 +640,6 @@ static void davinci_gpio_save_context(struct davinci_gpio_controller *chips,
 		context->set_rising = readl_relaxed(&g->set_rising);
 		context->set_falling = readl_relaxed(&g->set_falling);
 	}
-
-	/* Clear Bank interrupt enable bit */
-	writel_relaxed(0, base + BINTEN);
 
 	/* Clear all interrupt status registers */
 	writel_relaxed(GENMASK(31, 0), &g->intstat);

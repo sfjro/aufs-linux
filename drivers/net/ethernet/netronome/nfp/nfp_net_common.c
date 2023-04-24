@@ -38,6 +38,7 @@
 #include <net/tls.h>
 #include <net/vxlan.h>
 #include <net/xdp_sock_drv.h>
+#include <net/xfrm.h>
 
 #include "nfpcore/nfp_dev.h"
 #include "nfpcore/nfp_nsp.h"
@@ -1897,6 +1898,9 @@ nfp_net_features_check(struct sk_buff *skb, struct net_device *dev,
 			features &= ~NETIF_F_GSO_MASK;
 	}
 
+	if (xfrm_offload(skb))
+		return features;
+
 	/* VXLAN/GRE check */
 	switch (vlan_get_protocol(skb)) {
 	case htons(ETH_P_IP):
@@ -2531,10 +2535,15 @@ static void nfp_net_netdev_init(struct nfp_net *nn)
 	netdev->features &= ~NETIF_F_HW_VLAN_STAG_RX;
 	nn->dp.ctrl &= ~NFP_NET_CFG_CTRL_RXQINQ;
 
+	netdev->xdp_features = NETDEV_XDP_ACT_BASIC;
+	if (nn->app && nn->app->type->id == NFP_APP_BPF_NIC)
+		netdev->xdp_features |= NETDEV_XDP_ACT_HW_OFFLOAD;
+
 	/* Finalise the netdev setup */
 	switch (nn->dp.ops->version) {
 	case NFP_NFD_VER_NFD3:
 		netdev->netdev_ops = &nfp_nfd3_netdev_ops;
+		netdev->xdp_features |= NETDEV_XDP_ACT_XSK_ZEROCOPY;
 		break;
 	case NFP_NFD_VER_NFDK:
 		netdev->netdev_ops = &nfp_nfdk_netdev_ops;

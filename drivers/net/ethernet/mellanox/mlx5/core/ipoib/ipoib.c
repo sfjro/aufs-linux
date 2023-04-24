@@ -70,7 +70,6 @@ static void mlx5i_build_nic_params(struct mlx5_core_dev *mdev,
 
 	params->packet_merge.type = MLX5E_PACKET_MERGE_NONE;
 	params->hard_mtu = MLX5_IB_GRH_BYTES + MLX5_IPOIB_HARD_LEN;
-	params->tunneled_offload_en = false;
 
 	/* CQE compression is not supported for IPoIB */
 	params->rx_cqe_compress_def = false;
@@ -412,7 +411,8 @@ static int mlx5i_init_rx(struct mlx5e_priv *priv)
 	int err;
 
 	priv->fs = mlx5e_fs_init(priv->profile, mdev,
-				 !test_bit(MLX5E_STATE_DESTROYING, &priv->state));
+				 !test_bit(MLX5E_STATE_DESTROYING, &priv->state),
+				 priv->dfs_root);
 	if (!priv->fs) {
 		netdev_err(priv->netdev, "FS allocation failed\n");
 		return -ENOMEM;

@@ -59,6 +59,7 @@
 #include <net/ipv6.h>
 #include <net/inet_common.h>
 #include <net/busy_poll.h>
+#include <trace/events/sock.h>
 
 #include <linux/socket.h> /* for sa_family_t */
 #include <linux/export.h>
@@ -1829,6 +1830,10 @@ static int sctp_sendmsg_to_asoc(struct sctp_association *asoc,
 		err = sctp_wait_for_sndbuf(asoc, &timeo, msg_len);
 		if (err)
 			goto err;
+		if (unlikely(sinfo->sinfo_stream >= asoc->stream.outcnt)) {
+			err = -EINVAL;
+			goto err;
+		}
 	}
 
 	if (sctp_state(asoc, CLOSED)) {
@@ -8321,7 +8326,7 @@ static int sctp_get_port_local(struct sock *sk, union sctp_addr *addr)
 		int low, high, remaining, index;
 		unsigned int rover;
 
-		inet_get_local_port_range(net, &low, &high);
+		inet_sk_get_local_port_range(sk, &low, &high);
 		remaining = (high - low) + 1;
 		rover = get_random_u32_below(remaining) + low;
 
@@ -9243,6 +9248,8 @@ do_nonblock:
 void sctp_data_ready(struct sock *sk)
 {
 	struct socket_wq *wq;
+
+	trace_sk_data_ready(sk);
 
 	rcu_read_lock();
 	wq = rcu_dereference(sk->sk_wq);
