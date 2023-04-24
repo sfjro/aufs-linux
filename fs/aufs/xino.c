@@ -246,7 +246,7 @@ struct file *au_xino_create2(struct super_block *sb, struct path *base,
 	}
 
 	/* no need to mnt_want_write() since we call dentry_open() later */
-	err = vfs_create(mnt_user_ns(base->mnt), dir, path.dentry, 0666, NULL);
+	err = vfs_create(mnt_idmap(base->mnt), dir, path.dentry, 0666, NULL);
 	if (unlikely(err)) {
 		file = ERR_PTR(err);
 		pr_err("%pd create err %d\n", dentry, err);

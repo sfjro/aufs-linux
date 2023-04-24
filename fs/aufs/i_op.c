@@ -8,6 +8,7 @@
  */
 
 #include <linux/device_cgroup.h>
+#include <linux/filelock.h>
 #include <linux/fs_stack.h>
 #include <linux/iversion.h>
 #include <linux/security.h>
@@ -18,7 +19,7 @@ static int h_permission(struct inode *h_inode, int mask,
 {
 	int err;
 	const unsigned char write_mask = !!(mask & (MAY_WRITE | MAY_APPEND));
-	struct user_namespace *h_userns;
+	struct mnt_idmap *h_idmap;
 
 	err = -EPERM;
 	if (write_mask && IS_IMMUTABLE(h_inode))
@@ -38,7 +39,7 @@ static int h_permission(struct inode *h_inode, int mask,
 	 * - nfs always sets SB_POSIXACL regardless its mount option 'noacl.'
 	 *   in this case, generic_permission() returns -EOPNOTSUPP.
 	 */
-	h_userns = mnt_user_ns(h_path->mnt);
+	h_idmap = mnt_idmap(h_path->mnt);
 	if ((write_mask && !au_br_writable(brperm))
 	    || (au_test_nfs(h_inode->i_sb) && S_ISDIR(h_inode->i_mode)
 		&& write_mask && !(mask & MAY_READ))
@@ -46,14 +47,14 @@ static int h_permission(struct inode *h_inode, int mask,
 		/* AuLabel(generic_permission); */
 		/* AuDbg("get_inode_acl %ps\n",
 		   h_inode->i_op->get_inode_acl); */
-		err = generic_permission(h_userns, h_inode, mask);
+		err = generic_permission(h_idmap, h_inode, mask);
 		if (err == -EOPNOTSUPP && au_test_nfs_noacl(h_inode))
-			err = h_inode->i_op->permission(h_userns, h_inode,
+			err = h_inode->i_op->permission(h_idmap, h_inode,
 							mask);
 		AuTraceErr(err);
 	} else {
 		/* AuLabel(h_inode->permission); */
-		err = h_inode->i_op->permission(h_userns, h_inode, mask);
+		err = h_inode->i_op->permission(h_idmap, h_inode, mask);
 		AuTraceErr(err);
 	}
 
@@ -66,7 +67,7 @@ out:
 	return err;
 }
 
-static int aufs_permission(struct user_namespace *userns, struct inode *inode,
+static int aufs_permission(struct mnt_idmap *idmap, struct inode *inode,
 			   int mask)
 {
 	int err;
@@ -915,7 +916,7 @@ out:
 	return err;
 }
 
-static int aufs_setattr(struct user_namespace *userns, struct dentry *dentry,
+static int aufs_setattr(struct mnt_idmap *idmap, struct dentry *dentry,
 			struct iattr *ia)
 {
 	int err;
@@ -923,12 +924,12 @@ static int aufs_setattr(struct user_namespace *userns, struct dentry *dentry,
 	struct super_block *sb;
 	struct file *file;
 	struct au_icpup_args *a;
-	struct user_namespace *h_userns;
+	struct mnt_idmap *h_idmap;
 
 	inode = d_inode(dentry);
 	IMustLock(inode);
 
-	err = setattr_prepare(userns, dentry, ia);
+	err = setattr_prepare(idmap, dentry, ia);
 	if (unlikely(err))
 		goto out;
 
@@ -1022,8 +1023,8 @@ static int aufs_setattr(struct user_namespace *userns, struct dentry *dentry,
 	 * why don't all acl-aware fs call this func from their ->setattr()?
 	 */
 	if (!err && (ia->ia_valid & ATTR_MODE)) {
-		h_userns = mnt_user_ns(a->h_path.mnt);
-		err = vfsub_acl_chmod(h_userns, a->h_path.dentry, ia->ia_mode);
+		h_idmap = mnt_idmap(a->h_path.mnt);
+		err = vfsub_acl_chmod(h_idmap, a->h_path.dentry, ia->ia_mode);
 	}
 	if (!err)
 		au_cpup_attr_changeable(inode);
@@ -1086,7 +1087,7 @@ ssize_t au_sxattr(struct dentry *dentry, struct inode *inode,
 	struct super_block *sb;
 	struct au_icpup_args *a;
 	struct inode *h_inode;
-	struct user_namespace *h_userns;
+	struct mnt_idmap *h_idmap;
 
 	IMustLock(inode);
 
@@ -1105,13 +1106,13 @@ ssize_t au_sxattr(struct dentry *dentry, struct inode *inode,
 	err = au_h_path_to_set_attr(dentry, a, &h_path);
 	if (unlikely(err))
 		goto out_di;
-	h_userns = mnt_user_ns(h_path.mnt);
+	h_idmap = mnt_idmap(h_path.mnt);
 
 	inode_unlock(a->h_inode);
 	switch (arg->type) {
 	case AU_XATTR_SET:
 		AuDebugOn(d_is_negative(h_path.dentry));
-		err = vfsub_setxattr(h_userns, h_path.dentry,
+		err = vfsub_setxattr(h_idmap, h_path.dentry,
 				     arg->u.set.name, arg->u.set.value,
 				     arg->u.set.size, arg->u.set.flags);
 		break;
@@ -1120,7 +1121,7 @@ ssize_t au_sxattr(struct dentry *dentry, struct inode *inode,
 		h_inode = d_inode(h_path.dentry);
 		if (h_inode->i_op->set_acl) {
 			/* this will call posix_acl_update_mode */
-			err = h_inode->i_op->set_acl(h_userns, h_path.dentry,
+			err = h_inode->i_op->set_acl(h_idmap, h_path.dentry,
 						     arg->u.acl_set.acl,
 						     arg->u.acl_set.type);
 		}
@@ -1254,7 +1255,7 @@ out:
 	return err;
 }
 
-static int aufs_getattr(struct user_namespace *userns, const struct path *path,
+static int aufs_getattr(struct mnt_idmap *idmap, const struct path *path,
 			struct kstat *st, u32 request, unsigned int query)
 {
 	int err;
@@ -1292,7 +1293,7 @@ static int aufs_getattr(struct user_namespace *userns, const struct path *path,
 	goto out_di;
 
 out_fill:
-	generic_fillattr(userns, inode, st);
+	generic_fillattr(idmap, inode, st);
 out_di:
 	di_read_unlock(dentry, AuLock_IR);
 out_si:
