@@ -3010,13 +3010,13 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 	prfile = vma->vm_prfile;
 	ret = do_mmap(vma->vm_file, start, size,
 			prot, flags, pgoff, &populate, NULL);
-	if (!IS_ERR_VALUE(ret) && file && prfile) {
+	if (!IS_ERR_VALUE(ret) && prfile) {
 		struct vm_area_struct *new_vma;
 
 		new_vma = find_vma(mm, ret);
 		if (!new_vma->vm_prfile)
 			new_vma->vm_prfile = prfile;
-		if (new_vma != vma)
+		if (prfile)
 			get_file(prfile);
 	}
 	/*
