@@ -616,6 +616,7 @@ static int aufs_mmap(struct file *file, struct vm_area_struct *vma)
 	if (!err)
 		err = call_mmap(h_file, vma);
 	if (!err) {
+		au_vm_prfile_set(vma, file);
 		fsstack_copy_attr_atime(inode, file_inode(h_file));
 		goto out_fput; /* success */
 	}
