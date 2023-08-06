@@ -593,7 +593,7 @@ again:
 		if (vp->file) {
 			uprobe_munmap(vp->remove, vp->remove->vm_start,
 				      vp->remove->vm_end);
-			fput(vp->file);
+			vma_fput(vp->vma);
 		}
 		if (vp->remove->anon_vma)
 			anon_vma_merge(vp->vma, vp->remove);
