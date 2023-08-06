@@ -3045,7 +3045,7 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 	prfile = vma->vm_prfile;
 	ret = do_mmap(vma->vm_file, start, size,
 			prot, flags, pgoff, &populate, NULL);
-	if (!IS_ERR_VALUE(ret) && prfile) {
+	if (!IS_ERR_VALUE(ret) && file && prfile) {
 		struct vm_area_struct *new_vma;
 
 		new_vma = find_vma(mm, ret);
