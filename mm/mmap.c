@@ -1809,7 +1809,7 @@ unsigned long mmap_region(struct file *file, unsigned long addr,
 				 * fput the vma->vm_file here or we would add an extra fput for file
 				 * and cause general protection fault ultimately.
 				 */
-				fput(vma->vm_file);
+				vma_fput(vma);
 				vm_area_free(vma);
 				vma = merge;
 				/* Update vm_flags to pick up the change. */
