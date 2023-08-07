@@ -607,7 +607,7 @@ again:
 		if (vp->file) {
 			uprobe_munmap(vp->remove, vp->remove->vm_start,
 				      vp->remove->vm_end);
-			fput(vp->file);
+			vma_fput(vp->vma);
 		}
 		if (vp->remove->anon_vma)
 			anon_vma_merge(vp->vma, vp->remove);
@@ -2679,7 +2679,7 @@ cannot_expand:
 				 * and cause general protection fault
 				 * ultimately.
 				 */
-				fput(vma->vm_file);
+				vma_fput(vma);
 				vm_area_free(vma);
 				vma = merge;
 				/* Update vm_flags to pick up the change. */
@@ -2916,7 +2916,7 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 		new_vma = find_vma(mm, ret);
 		if (!new_vma->vm_prfile)
 			new_vma->vm_prfile = prfile;
-		if (new_vma != vma)
+		if (prfile)
 			get_file(prfile);
 	}
 	/*
