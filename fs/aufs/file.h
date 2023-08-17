@@ -313,5 +313,17 @@ static inline void au_vm_file_reset(struct vm_area_struct *vma,
 }
 #endif /* CONFIG_MMU */
 
+/* handle vma->vm_prfile */
+static inline void au_vm_prfile_set(struct vm_area_struct *vma,
+				    struct file *file)
+{
+	get_file(file);
+	vma->vm_prfile = file;
+#ifndef CONFIG_MMU
+	get_file(file);
+	vma->vm_region->vm_prfile = file;
+#endif
+}
+
 #endif /* __KERNEL__ */
 #endif /* __AUFS_FILE_H__ */
