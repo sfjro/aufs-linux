@@ -73,6 +73,11 @@ struct file *au_h_open(struct dentry *dentry, aufs_bindex_t bindex, int flags,
 	au_lcnt_inc(&br->br_nfiles);
 	h_path.dentry = h_dentry;
 	h_path.mnt = au_br_mnt(br);
+	/*
+	 * vfs::backing_file_open() looks promising since it can get rid of
+	 * mm::vm_prfile approach from my mind.
+	 * but I keep current approach for a while.
+	 */
 	h_file = vfsub_dentry_open(&h_path, flags);
 	if (IS_ERR(h_file))
 		goto out_br;
