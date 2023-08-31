@@ -470,8 +470,8 @@ int aufs_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
 	h_parent = au_h_dptr(parent, bindex);
 	h_ppath.mnt = h_mnt;
 	h_ppath.dentry = h_parent;
-	h_file = vfs_tmpfile_open(h_idmap, &h_ppath, mode, /*open_flag*/0,
-				  current_cred());
+	h_file = kernel_tmpfile_open(h_idmap, &h_ppath, mode, /*open_flag*/0,
+				     current_cred());
 	if (IS_ERR(h_file)) {
 		err = PTR_ERR(h_file);
 		h_file = NULL;

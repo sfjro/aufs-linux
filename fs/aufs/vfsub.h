@@ -236,9 +236,9 @@ AuStubInt0(vfsub_acl_chmod, struct mnt_idmap *h_idmap,
 	   struct dentry *h_dentry, umode_t h_mode);
 #endif
 
-long vfsub_splice_to(struct file *in, loff_t *ppos,
-		     struct pipe_inode_info *pipe, size_t len,
-		     unsigned int flags);
+long vfsub_splice_read(struct file *in, loff_t *ppos,
+		       struct pipe_inode_info *pipe, size_t len,
+		       unsigned int flags);
 long vfsub_splice_from(struct pipe_inode_info *pipe, struct file *out,
 		       loff_t *ppos, size_t len, unsigned int flags);
 
