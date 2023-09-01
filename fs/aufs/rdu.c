@@ -137,7 +137,7 @@ static int au_rdu(struct file *file, struct aufs_rdu *rdu)
 	arg.end += rdu->sz;
 
 	err = -ENOTDIR;
-	if (unlikely(!file->f_op->iterate && !file->f_op->iterate_shared))
+	if (unlikely(!file->f_op->iterate_shared))
 		goto out;
 
 	err = security_file_permission(file, MAY_READ);
