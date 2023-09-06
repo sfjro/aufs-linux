@@ -722,7 +722,7 @@ static int au_drinfo_store_work_init(struct au_drinfo_store *w,
 
 	memset(w, 0, sizeof(*w));
 	w->allocated = roundup_pow_of_two(sizeof(*w->fdata) + 40);
-	strcpy(w->whname, AUFS_WH_DR_INFO_PFX);
+	strscpy(w->whname, AUFS_WH_DR_INFO_PFX, sizeof(AUFS_WH_DR_INFO_PFX));
 	w->infoname = w->whname + sizeof(AUFS_WH_DR_INFO_PFX) - 1;
 	w->infonamelen = sizeof(w->whname) - sizeof(AUFS_WH_DR_INFO_PFX);
 	w->btgt = btgt;
