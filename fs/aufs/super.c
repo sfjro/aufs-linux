@@ -104,7 +104,7 @@ static int au_show_brs(struct seq_file *seq, struct super_block *sb)
 	return err;
 }
 
-static void au_gen_fmt(char *fmt, int len __maybe_unused, const char *pat,
+static void au_gen_fmt(char *fmt, int len, const char *pat,
 		       const char *append)
 {
 	char *p;
@@ -113,7 +113,7 @@ static void au_gen_fmt(char *fmt, int len __maybe_unused, const char *pat,
 	while (*pat != ':')
 		*p++ = *pat++;
 	*p++ = *pat++;
-	strcpy(p, append);
+	strscpy(p, append, len - (p - fmt));
 	AuDebugOn(strlen(fmt) >= len);
 }
 
