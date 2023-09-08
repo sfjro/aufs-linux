@@ -151,7 +151,7 @@ static int dbgaufs_plink_open(struct inode *inode, struct file *file)
 	} else {
 #define str "1\n0\n0\n"
 		p->n = sizeof(str) - 1;
-		strcpy(p->a, str);
+		strscpy(p->a, str, sizeof(str));
 #undef str
 	}
 	si_read_unlock(sb);
