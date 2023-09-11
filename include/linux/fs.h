@@ -1099,7 +1099,7 @@ extern void fasync_free(struct fasync_struct *);
 /* can be called from interrupts */
 extern void kill_fasync(struct fasync_struct **, int, int);
 
-extern int setfl(int fd, struct file *filp, unsigned long arg);
+extern int setfl(int fd, struct file *filp, unsigned int arg);
 extern void __f_setown(struct file *filp, struct pid *, enum pid_type, int force);
 extern int f_setown(struct file *filp, int who, int force);
 extern void f_delown(struct file *filp);
