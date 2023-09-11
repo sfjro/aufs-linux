@@ -811,7 +811,7 @@ int aufs_link(struct dentry *src_dentry, struct inode *dir,
 	au_dir_ts(dir, a->bdst);
 	inode_inc_iversion(dir);
 	inc_nlink(inode);
-	inode->i_ctime = dir->i_ctime;
+	inode_set_ctime_to_ts(inode, inode_get_ctime(dir));
 	d_instantiate(dentry, au_igrab(inode));
 	if (d_unhashed(a->h_path.dentry))
 		/* some filesystem calls d_drop() */

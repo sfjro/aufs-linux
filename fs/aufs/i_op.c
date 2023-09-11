@@ -1156,7 +1156,7 @@ static void au_refresh_iattr(struct inode *inode, struct kstat *st,
 	inode->i_gid = st->gid;
 	inode->i_atime = st->atime;
 	inode->i_mtime = st->mtime;
-	inode->i_ctime = st->ctime;
+	inode_set_ctime_to_ts(inode, st->ctime);
 
 	au_cpup_attr_nlink(inode, /*force*/0);
 	if (S_ISDIR(inode->i_mode)) {
@@ -1293,7 +1293,7 @@ static int aufs_getattr(struct mnt_idmap *idmap, const struct path *path,
 	goto out_di;
 
 out_fill:
-	generic_fillattr(idmap, inode, st);
+	generic_fillattr(idmap, request, inode, st);
 out_di:
 	di_read_unlock(dentry, AuLock_IR);
 out_si:
@@ -1375,8 +1375,7 @@ static int au_is_special(struct inode *inode)
 	return (inode->i_mode & (S_IFBLK | S_IFCHR | S_IFIFO | S_IFSOCK));
 }
 
-static int aufs_update_time(struct inode *inode, struct timespec64 *ts,
-			    int flags)
+static int aufs_update_time(struct inode *inode, int flags)
 {
 	int err;
 	aufs_bindex_t bindex;
@@ -1400,7 +1399,7 @@ static int aufs_update_time(struct inode *inode, struct timespec64 *ts,
 		h_mnt = au_sbr_mnt(sb, bindex);
 		err = vfsub_mnt_want_write(h_mnt);
 		if (!err) {
-			err = vfsub_update_time(h_inode, ts, flags);
+			err = vfsub_update_time(h_inode, flags);
 			vfsub_mnt_drop_write(h_mnt);
 		}
 	} else if (au_is_special(h_inode)) {
