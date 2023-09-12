@@ -136,6 +136,20 @@ static inline void vfsub_mnt_drop_write_file(struct file *file)
 }
 #endif
 
+static inline void vfsub_file_start_write(struct file *file)
+{
+	lockdep_off();
+	file_start_write(file);
+	lockdep_on();
+}
+
+static inline void vfsub_file_end_write(struct file *file)
+{
+	lockdep_off();
+	file_end_write(file);
+	lockdep_on();
+}
+
 /* ---------------------------------------------------------------------- */
 
 struct au_hinode;
