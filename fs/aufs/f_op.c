@@ -210,6 +210,7 @@ static struct file *au_write_pre(struct file *file, int do_ready,
 	if (do_ready)
 		au_unpin(&pin);
 	di_read_unlock(dentry, /*flags*/0);
+	vfsub_file_start_write(h_file);
 
 out_fi:
 	fi_write_unlock(file);
@@ -222,6 +223,7 @@ static void au_write_post(struct inode *inode, struct file *h_file,
 {
 	struct inode *h_inode;
 
+	vfsub_file_end_write(h_file);
 	au_cpup_attr_timesizes(inode);
 	AuDebugOn(au_ibtop(inode) != wpre->btop);
 	h_inode = file_inode(h_file);
