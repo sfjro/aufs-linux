@@ -30,7 +30,7 @@ static const struct sysfs_ops au_sbi_ops = {
 	.show   = sysaufs_si_show
 };
 
-static struct kobj_type au_sbi_ktype = {
+static const struct kobj_type au_sbi_ktype = {
 	.release	= au_si_free,
 	.sysfs_ops	= &au_sbi_ops,
 	.default_groups	= sysaufs_si_groups
