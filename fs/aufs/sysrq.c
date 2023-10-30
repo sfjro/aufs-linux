@@ -90,7 +90,7 @@ static char *aufs_sysrq_key = "a";
 module_param_named(sysrq, aufs_sysrq_key, charp, 0444);
 MODULE_PARM_DESC(sysrq, "MagicSysRq key for " AUFS_NAME);
 
-static void au_sysrq(int key __maybe_unused)
+static void au_sysrq(u8 key __maybe_unused)
 {
 	struct au_sbinfo *sbinfo;
 	struct hlist_bl_node *pos;
