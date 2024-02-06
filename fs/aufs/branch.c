@@ -1280,7 +1280,7 @@ static int au_br_mod_files_ro(struct super_block *sb, aufs_bindex_t bindex)
 			if (hf->f_mode & FMODE_READ)
 				i_readcount_inc(h_inode);
 			put_write_access(h_inode);
-			__mnt_drop_write(hf->f_path.mnt);
+			mnt_put_write_access(hf->f_path.mnt);
 		}
 	}
 
