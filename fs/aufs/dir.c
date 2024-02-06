@@ -94,6 +94,7 @@ static void au_do_dir_ts(void *arg)
 	struct au_dir_ts_arg *a = arg;
 	struct au_dtime dt;
 	struct path h_path;
+	struct timespec64 ts;
 	struct inode *dir, *h_dir;
 	struct super_block *sb;
 	struct au_branch *br;
@@ -131,8 +132,9 @@ static void au_do_dir_ts(void *arg)
 	hdir = au_hi(dir, btop);
 	au_hn_inode_lock_nested(hdir, AuLsc_I_PARENT);
 	h_dir = au_h_iptr(dir, btop);
+	ts = inode_get_mtime(h_dir);
 	if (h_dir->i_nlink
-	    && timespec64_compare(&h_dir->i_mtime, &dt.dt_mtime) < 0) {
+	    && timespec64_compare(&ts, &dt.dt_mtime) < 0) {
 		dt.dt_h_path = h_path;
 		au_dtime_revert(&dt);
 	}

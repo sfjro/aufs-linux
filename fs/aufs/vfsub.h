@@ -20,7 +20,6 @@
 
 /* copied from linux/fs/internal.h */
 /* todo: BAD approach!! */
-extern void __mnt_drop_write(struct vfsmount *);
 extern struct file *alloc_empty_file(int, const struct cred *);
 
 /* ---------------------------------------------------------------------- */
