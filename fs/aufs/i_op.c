@@ -1154,8 +1154,8 @@ static void au_refresh_iattr(struct inode *inode, struct kstat *st,
 	/* don't i_[ug]id_write() here */
 	inode->i_uid = st->uid;
 	inode->i_gid = st->gid;
-	inode->i_atime = st->atime;
-	inode->i_mtime = st->mtime;
+	inode_set_atime_to_ts(inode, st->atime);
+	inode_set_mtime_to_ts(inode, st->mtime);
 	inode_set_ctime_to_ts(inode, st->ctime);
 
 	au_cpup_attr_nlink(inode, /*force*/0);
@@ -1280,9 +1280,13 @@ static int aufs_getattr(struct mnt_idmap *idmap, const struct path *path,
 		goto out_fill; /* pretending success */
 
 	positive = d_is_positive(h_path.dentry);
-	if (positive)
+	if (positive) {
 		/* no vfsub version */
-		err = vfs_getattr(&h_path, st, request, query);
+		if (query & AT_GETATTR_NOSEC)
+			err = vfs_getattr_nosec(&h_path, st, request, query);
+		else
+			err = vfs_getattr(&h_path, st, request, query);
+	}
 	if (!err) {
 		if (positive)
 			au_refresh_iattr(inode, st,
