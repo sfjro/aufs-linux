@@ -102,7 +102,4 @@ extern const struct pipe_buf_operations default_pipe_buf_ops;
 
 extern long do_splice_from(struct pipe_inode_info *pipe, struct file *out,
 			   loff_t *ppos, size_t len, unsigned int flags);
-extern long do_splice_to(struct file *in, loff_t *ppos,
-			 struct pipe_inode_info *pipe, size_t len,
-			 unsigned int flags);
 #endif
