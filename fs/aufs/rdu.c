@@ -13,9 +13,9 @@
 #include "aufs.h"
 
 /* bits for struct aufs_rdu.flags */
-#define	AuRdu_CALLED	1
-#define	AuRdu_CONT	(1 << 1)
-#define	AuRdu_FULL	(1 << 2)
+#define	AuRdu_CALLED	BIT(0)
+#define	AuRdu_CONT	BIT(1)
+#define	AuRdu_FULL	BIT(2)
 #define au_ftest_rdu(flags, name)	((flags) & AuRdu_##name)
 #define au_fset_rdu(flags, name) \
 	do { (flags) |= AuRdu_##name; } while (0)

@@ -179,7 +179,7 @@ static void dy_aop(struct au_dykey *key, const void *h_op,
 	DySetAop(launder_folio);
 	DySetAop(is_partially_uptodate);
 	DySetAop(is_dirty_writeback);
-	DySetAop(error_remove_page);
+	DySetAop(error_remove_folio);
 	DySetAop(swap_activate);
 	DySetAop(swap_deactivate);
 	DySetAop(swap_rw);

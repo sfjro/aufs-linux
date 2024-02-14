@@ -38,10 +38,10 @@ int au_cpdown_attr(struct path *h_path, struct dentry *h_src)
 	return err;
 }
 
-#define AuCpdown_PARENT_OPQ	1
-#define AuCpdown_WHED		(1 << 1)
-#define AuCpdown_MADE_DIR	(1 << 2)
-#define AuCpdown_DIROPQ		(1 << 3)
+#define AuCpdown_PARENT_OPQ	BIT(0)
+#define AuCpdown_WHED		BIT(1)
+#define AuCpdown_MADE_DIR	BIT(2)
+#define AuCpdown_DIROPQ		BIT(3)
 #define au_ftest_cpdown(flags, name)	((flags) & AuCpdown_##name)
 #define au_fset_cpdown(flags, name) \
 	do { (flags) |= AuCpdown_##name; } while (0)

@@ -35,9 +35,9 @@ struct au_dinfo {
 /* ---------------------------------------------------------------------- */
 
 /* flags for au_lkup_dentry() */
-#define AuLkup_ALLOW_NEG	1
-#define AuLkup_IGNORE_PERM	(1 << 1)
-#define AuLkup_DIRREN		(1 << 2)
+#define AuLkup_ALLOW_NEG	BIT(0)
+#define AuLkup_IGNORE_PERM	BIT(1)
+#define AuLkup_DIRREN		BIT(2)
 #define au_ftest_lkup(flags, name)	((flags) & AuLkup_##name)
 #define au_fset_lkup(flags, name) \
 	do { (flags) |= AuLkup_##name; } while (0)

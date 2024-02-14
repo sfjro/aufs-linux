@@ -72,8 +72,8 @@ struct au_icntnr {
 } ____cacheline_aligned_in_smp;
 
 /* au_pin flags */
-#define AuPin_DI_LOCKED		1
-#define AuPin_MNT_WRITE		(1 << 1)
+#define AuPin_DI_LOCKED		BIT(0)
+#define AuPin_MNT_WRITE		BIT(1)
 #define au_ftest_pin(flags, name)	((flags) & AuPin_##name)
 #define au_fset_pin(flags, name) \
 	do { (flags) |= AuPin_##name; } while (0)
@@ -150,9 +150,9 @@ extern struct inode_operations aufs_iop[AuIop_Last], /* not const */
 	aufs_iop_nogetattr[AuIop_Last];
 
 /* au_wr_dir flags */
-#define AuWrDir_ADD_ENTRY	1
-#define AuWrDir_ISDIR		(1 << 1)
-#define AuWrDir_TMPFILE		(1 << 2)
+#define AuWrDir_ADD_ENTRY	BIT(0)
+#define AuWrDir_ISDIR		BIT(1)
+#define AuWrDir_TMPFILE		BIT(2)
 #define au_ftest_wrdir(flags, name)	((flags) & AuWrDir_##name)
 #define au_fset_wrdir(flags, name) \
 	do { (flags) |= AuWrDir_##name; } while (0)
@@ -240,8 +240,8 @@ void au_set_hi_wh(struct inode *inode, aufs_bindex_t bindex,
 unsigned int au_hi_flags(struct inode *inode, int isdir);
 
 /* hinode flags */
-#define AuHi_XINO	1
-#define AuHi_HNOTIFY	(1 << 1)
+#define AuHi_XINO	BIT(0)
+#define AuHi_HNOTIFY	BIT(1)
 #define au_ftest_hi(flags, name)	((flags) & AuHi_##name)
 #define au_fset_hi(flags, name) \
 	do { (flags) |= AuHi_##name; } while (0)

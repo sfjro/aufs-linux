@@ -414,9 +414,9 @@ static int reinit_vdir(struct au_vdir *vdir)
 
 /* ---------------------------------------------------------------------- */
 
-#define AuFillVdir_CALLED	1
-#define AuFillVdir_WHABLE	(1 << 1)
-#define AuFillVdir_SHWH		(1 << 2)
+#define AuFillVdir_CALLED	BIT(0)
+#define AuFillVdir_WHABLE	BIT(1)
+#define AuFillVdir_SHWH		BIT(2)
 #define au_ftest_fillvdir(flags, name)	((flags) & AuFillVdir_##name)
 #define au_fset_fillvdir(flags, name) \
 	do { (flags) |= AuFillVdir_##name; } while (0)
