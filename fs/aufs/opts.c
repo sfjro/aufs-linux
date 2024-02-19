@@ -658,8 +658,8 @@ static int au_opt_br(struct super_block *sb, struct au_opt *opt,
 	case Opt_prepend:
 		opt->add.bindex = 0;
 		fallthrough;
-	add: /* indented label */
 	case Opt_add:
+	add: /* indented label */
 		err = au_br_add(sb, &opt->add,
 				au_ftest_opts(opts->flags, REMOUNT));
 		if (!err) {
