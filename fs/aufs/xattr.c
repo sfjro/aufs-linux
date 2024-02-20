@@ -68,7 +68,7 @@ static int au_do_cpup_xattr(struct path *h_dst, struct path *h_src,
 	if (is_acl) {
 		acl = vfs_get_acl(h_src_idmap, h_src_dentry, name);
 		AuDebugOn(!acl);
-		if (unlikely(IS_ERR(acl))) {
+		if (IS_ERR(acl)) {
 			err = PTR_ERR(acl);
 			if (err == -ENODATA)
 				err = 0;
