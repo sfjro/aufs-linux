@@ -1211,6 +1211,9 @@ enum d_walk_ret {
 	D_WALK_SKIP,
 };
 
+/* AUFS calls d_walk(). Just to make the compiler silence, declare it */
+void d_walk(struct dentry *parent, void *data,
+		   enum d_walk_ret (*enter)(void *, struct dentry *));
 /**
  * d_walk - walk the dentry tree
  * @parent:	start of walk
