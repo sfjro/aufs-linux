@@ -645,6 +645,8 @@ out_putf:
  * for AUFS
  * no get/put for file.
  */
+/* Just to make the compiler silence, declare it */
+struct file *loop_backing_file(struct super_block *sb);
 struct file *loop_backing_file(struct super_block *sb)
 {
 	struct file *ret;
