@@ -814,8 +814,8 @@ static bool aufs_is_partially_uptodate(struct folio *folio, size_t from,
 static void aufs_is_dirty_writeback(struct folio *folio, bool *dirty,
 				    bool *writeback)
 { AuUnsupport(); }
-static int aufs_error_remove_page(struct address_space *mapping,
-				  struct page *page)
+static int aufs_error_remove_folio(struct address_space *mapping,
+				   struct folio *folio)
 { AuUnsupport(); return 0; }
 static int aufs_swap_activate(struct swap_info_struct *sis, struct file *file,
 			      sector_t *span)
@@ -844,7 +844,7 @@ const struct address_space_operations aufs_aop = {
 	.launder_folio		= aufs_launder_folio,
 	.is_partially_uptodate	= aufs_is_partially_uptodate,
 	.is_dirty_writeback	= aufs_is_dirty_writeback,
-	.error_remove_page	= aufs_error_remove_page,
+	.error_remove_folio	= aufs_error_remove_folio,
 	.swap_activate		= aufs_swap_activate,
 	.swap_deactivate	= aufs_swap_deactivate,
 	.swap_rw		= aufs_swap_rw

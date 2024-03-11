@@ -44,23 +44,23 @@ enum {
 /* ---------------------------------------------------------------------- */
 
 /* mount flags */
-#define AuOpt_XINO		1		/* external inode number bitmap
+#define AuOpt_XINO		BIT(0)		/* external inode number bitmap
 						   and translation table */
-#define AuOpt_TRUNC_XINO	(1 << 1)	/* truncate xino files */
-#define AuOpt_UDBA_NONE		(1 << 2)	/* users direct branch access */
-#define AuOpt_UDBA_REVAL	(1 << 3)
-#define AuOpt_UDBA_HNOTIFY	(1 << 4)
-#define AuOpt_SHWH		(1 << 5)	/* show whiteout */
-#define AuOpt_PLINK		(1 << 6)	/* pseudo-link */
-#define AuOpt_DIRPERM1		(1 << 7)	/* ignore the lower dir's perm
+#define AuOpt_TRUNC_XINO	BIT(1)		/* truncate xino files */
+#define AuOpt_UDBA_NONE		BIT(2)		/* users direct branch access */
+#define AuOpt_UDBA_REVAL	BIT(3)
+#define AuOpt_UDBA_HNOTIFY	BIT(4)
+#define AuOpt_SHWH		BIT(5)		/* show whiteout */
+#define AuOpt_PLINK		BIT(6)		/* pseudo-link */
+#define AuOpt_DIRPERM1		BIT(7)		/* ignore the lower dir's perm
 						   bits */
-#define AuOpt_ALWAYS_DIROPQ	(1 << 9)	/* policy to creating diropq */
-#define AuOpt_SUM		(1 << 10)	/* summation for statfs(2) */
-#define AuOpt_SUM_W		(1 << 11)	/* unimplemented */
-#define AuOpt_WARN_PERM		(1 << 12)	/* warn when add-branch */
-#define AuOpt_VERBOSE		(1 << 13)	/* print the cause of error */
-#define AuOpt_DIO		(1 << 14)	/* direct io */
-#define AuOpt_DIRREN		(1 << 15)	/* directory rename */
+#define AuOpt_ALWAYS_DIROPQ	BIT(8)		/* policy to creating diropq */
+#define AuOpt_SUM		BIT(9)		/* summation for statfs(2) */
+#define AuOpt_SUM_W		BIT(10)		/* unimplemented */
+#define AuOpt_WARN_PERM		BIT(11)		/* warn when add-branch */
+#define AuOpt_VERBOSE		BIT(12)		/* print the cause of error */
+#define AuOpt_DIO		BIT(13)		/* direct io */
+#define AuOpt_DIRREN		BIT(14)		/* directory rename */
 
 #ifndef CONFIG_AUFS_HNOTIFY
 #undef AuOpt_UDBA_HNOTIFY
@@ -194,12 +194,12 @@ struct au_opt {
 };
 
 /* opts flags */
-#define AuOpts_REMOUNT		1
-#define AuOpts_REFRESH		(1 << 1)
-#define AuOpts_TRUNC_XIB	(1 << 2)
-#define AuOpts_REFRESH_DYAOP	(1 << 3)
-#define AuOpts_REFRESH_IDOP	(1 << 4)
-#define AuOpts_DR_FLUSHED	(1 << 5)
+#define AuOpts_REMOUNT		BIT(0)
+#define AuOpts_REFRESH		BIT(1)
+#define AuOpts_TRUNC_XIB	BIT(2)
+#define AuOpts_REFRESH_DYAOP	BIT(3)
+#define AuOpts_REFRESH_IDOP	BIT(4)
+#define AuOpts_DR_FLUSHED	BIT(5)
 #define au_ftest_opts(flags, name)	((flags) & AuOpts_##name)
 #define au_fset_opts(flags, name) \
 	do { (flags) |= AuOpts_##name; } while (0)

@@ -281,17 +281,33 @@ static struct vfsmount *au_mnt_get(struct super_block *sb)
 {
 	int err;
 	struct path root;
+	struct vfsmount *mnt;
 	struct au_compare_mnt_args args = {
 		.sb = sb
 	};
 
 	get_fs_root(current->fs, &root);
+	/*
+	 * as long as this sb is alive, this temporary unlock is safe.
+	 * Really?
+	 */
+	si_read_unlock(sb);
+	mnt = collect_mounts(&root);
+	if (IS_ERR(mnt)) {
+		args.mnt = mnt;
+		goto out;
+	}
+
 	rcu_read_lock();
-	err = iterate_mounts(au_compare_mnt, &args, root.mnt);
+	err = iterate_mounts(au_compare_mnt, &args, mnt);
 	rcu_read_unlock();
-	path_put(&root);
+	drop_collected_mounts(mnt);
 	AuDebugOn(!err);
+
+out:
+	si_noflush_read_lock(sb);
 	AuDebugOn(!args.mnt);
+	path_put(&root);
 	return args.mnt;
 }
 

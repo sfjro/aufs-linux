@@ -516,9 +516,9 @@ out:
 
 /* ---------------------------------------------------------------------- */
 
-#define AuTestEmpty_WHONLY	1
-#define AuTestEmpty_CALLED	(1 << 1)
-#define AuTestEmpty_SHWH	(1 << 2)
+#define AuTestEmpty_WHONLY	BIT(0)
+#define AuTestEmpty_CALLED	BIT(1)
+#define AuTestEmpty_SHWH	BIT(2)
 #define au_ftest_testempty(flags, name)	((flags) & AuTestEmpty_##name)
 #define au_fset_testempty(flags, name) \
 	do { (flags) |= AuTestEmpty_##name; } while (0)

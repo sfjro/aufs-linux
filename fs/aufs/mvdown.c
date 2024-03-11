@@ -161,6 +161,13 @@ static int au_do_lock(const unsigned char dmsg, struct au_mvd_args *a)
 	au_pin_hdir_unlock(&a->mvd_pin_src);
 	h_trap = vfsub_lock_rename(a->mvd_h_src_parent, a->mvd_hdir_src,
 				   a->mvd_h_dst_parent, a->mvd_hdir_dst);
+	if (IS_ERR(h_trap)) {
+		err = PTR_ERR(h_trap);
+		au_pin_hdir_lock(&a->mvd_pin_src);
+		au_unpin(&a->mvd_pin_src);
+		au_pin_hdir_lock(&a->mvd_pin_dst);
+		goto out_dst;
+	}
 	if (h_trap) {
 		err = (h_trap != a->mvd_h_src_parent);
 		if (err)

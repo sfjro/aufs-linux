@@ -36,15 +36,15 @@ struct au_cp_generic {
 };
 
 /* cpup flags */
-#define AuCpup_DTIME		1		/* do dtime_store/revert */
-#define AuCpup_KEEPLINO		(1 << 1)	/* do not clear the lower xino,
+#define AuCpup_DTIME		BIT(0)		/* do dtime_store/revert */
+#define AuCpup_KEEPLINO		BIT(1)		/* do not clear the lower xino,
 						   for link(2) */
-#define AuCpup_RENAME		(1 << 2)	/* rename after cpup */
-#define AuCpup_HOPEN		(1 << 3)	/* call h_open_pre/post() in
+#define AuCpup_RENAME		BIT(2)		/* rename after cpup */
+#define AuCpup_HOPEN		BIT(3)		/* call h_open_pre/post() in
 						   cpup */
-#define AuCpup_OVERWRITE	(1 << 4)	/* allow overwriting the
+#define AuCpup_OVERWRITE	BIT(4)		/* allow overwriting the
 						   existing entry */
-#define AuCpup_RWDST		(1 << 5)	/* force write target even if
+#define AuCpup_RWDST		BIT(5)		/* force write target even if
 						   the branch is marked as RO */
 
 #ifndef CONFIG_AUFS_BR_HFSPLUS
