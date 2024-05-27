@@ -412,14 +412,14 @@ struct mem_size_stats {
 };
 
 static void smaps_page_accumulate(struct mem_size_stats *mss,
-		struct page *page, unsigned long size, unsigned long pss,
+		struct folio *folio, unsigned long size, unsigned long pss,
 		bool dirty, bool locked, bool private)
 {
 	mss->pss += pss;
 
-	if (PageAnon(page))
+	if (folio_test_anon(folio))
 		mss->pss_anon += pss;
-	else if (PageSwapBacked(page))
+	else if (folio_test_swapbacked(folio))
 		mss->pss_shmem += pss;
 	else
 		mss->pss_file += pss;
@@ -427,7 +427,7 @@ static void smaps_page_accumulate(struct mem_size_stats *mss,
 	if (locked)
 		mss->pss_locked += pss;
 
-	if (dirty || PageDirty(page)) {
+	if (dirty || folio_test_dirty(folio)) {
 		mss->pss_dirty += pss;
 		if (private)
 			mss->private_dirty += size;
@@ -445,6 +445,7 @@ static void smaps_account(struct mem_size_stats *mss, struct page *page,
 		bool compound, bool young, bool dirty, bool locked,
 		bool migration)
 {
+	struct folio *folio = page_folio(page);
 	int i, nr = compound ? compound_nr(page) : 1;
 	unsigned long size = nr * PAGE_SIZE;
 
@@ -452,27 +453,28 @@ static void smaps_account(struct mem_size_stats *mss, struct page *page,
 	 * First accumulate quantities that depend only on |size| and the type
 	 * of the compound page.
 	 */
-	if (PageAnon(page)) {
+	if (folio_test_anon(folio)) {
 		mss->anonymous += size;
-		if (!PageSwapBacked(page) && !dirty && !PageDirty(page))
+		if (!folio_test_swapbacked(folio) && !dirty &&
+		    !folio_test_dirty(folio))
 			mss->lazyfree += size;
 	}
 
-	if (PageKsm(page))
+	if (folio_test_ksm(folio))
 		mss->ksm += size;
 
 	mss->resident += size;
 	/* Accumulate the size in pages that have been accessed. */
-	if (young || page_is_young(page) || PageReferenced(page))
+	if (young || folio_test_young(folio) || folio_test_referenced(folio))
 		mss->referenced += size;
 
 	/*
 	 * Then accumulate quantities that may depend on sharing, or that may
 	 * differ page-by-page.
 	 *
-	 * page_count(page) == 1 guarantees the page is mapped exactly once.
+	 * refcount == 1 guarantees the page is mapped exactly once.
 	 * If any subpage of the compound page mapped with PTE it would elevate
-	 * page_count().
+	 * the refcount.
 	 *
 	 * The page_mapcount() is called to get a snapshot of the mapcount.
 	 * Without holding the page lock this snapshot can be slightly wrong as
@@ -481,9 +483,9 @@ static void smaps_account(struct mem_size_stats *mss, struct page *page,
 	 * especially for migration entries.  Treat regular migration entries
 	 * as mapcount == 1.
 	 */
-	if ((page_count(page) == 1) || migration) {
-		smaps_page_accumulate(mss, page, size, size << PSS_SHIFT, dirty,
-			locked, true);
+	if ((folio_ref_count(folio) == 1) || migration) {
+		smaps_page_accumulate(mss, folio, size, size << PSS_SHIFT,
+				dirty, locked, true);
 		return;
 	}
 	for (i = 0; i < nr; i++, page++) {
@@ -491,8 +493,8 @@ static void smaps_account(struct mem_size_stats *mss, struct page *page,
 		unsigned long pss = PAGE_SIZE << PSS_SHIFT;
 		if (mapcount >= 2)
 			pss /= mapcount;
-		smaps_page_accumulate(mss, page, PAGE_SIZE, pss, dirty, locked,
-				      mapcount < 2);
+		smaps_page_accumulate(mss, folio, PAGE_SIZE, pss,
+				dirty, locked, mapcount < 2);
 	}
 }
 
@@ -577,6 +579,7 @@ static void smaps_pmd_entry(pmd_t *pmd, unsigned long addr,
 	struct vm_area_struct *vma = walk->vma;
 	bool locked = !!(vma->vm_flags & VM_LOCKED);
 	struct page *page = NULL;
+	struct folio *folio;
 	bool migration = false;
 
 	if (pmd_present(*pmd)) {
@@ -591,11 +594,12 @@ static void smaps_pmd_entry(pmd_t *pmd, unsigned long addr,
 	}
 	if (IS_ERR_OR_NULL(page))
 		return;
-	if (PageAnon(page))
+	folio = page_folio(page);
+	if (folio_test_anon(folio))
 		mss->anonymous_thp += HPAGE_PMD_SIZE;
-	else if (PageSwapBacked(page))
+	else if (folio_test_swapbacked(folio))
 		mss->shmem_thp += HPAGE_PMD_SIZE;
-	else if (is_zone_device_page(page))
+	else if (folio_is_zone_device(folio))
 		/* pass */;
 	else
 		mss->file_thp += HPAGE_PMD_SIZE;
@@ -727,19 +731,20 @@ static int smaps_hugetlb_range(pte_t *pte, unsigned long hmask,
 {
 	struct mem_size_stats *mss = walk->private;
 	struct vm_area_struct *vma = walk->vma;
-	struct page *page = NULL;
-	pte_t ptent = ptep_get(pte);
+	pte_t ptent = huge_ptep_get(pte);
+	struct folio *folio = NULL;
 
 	if (pte_present(ptent)) {
-		page = vm_normal_page(vma, addr, ptent);
+		folio = page_folio(pte_page(ptent));
 	} else if (is_swap_pte(ptent)) {
 		swp_entry_t swpent = pte_to_swp_entry(ptent);
 
 		if (is_pfn_swap_entry(swpent))
-			page = pfn_swap_entry_to_page(swpent);
+			folio = pfn_swap_entry_folio(swpent);
 	}
-	if (page) {
-		if (page_mapcount(page) >= 2 || hugetlb_pmd_shared(pte))
+	if (folio) {
+		if (folio_likely_mapped_shared(folio) ||
+		    hugetlb_pmd_shared(pte))
 			mss->shared_hugetlb += huge_page_size(hstate_vma(vma));
 		else
 			mss->private_hugetlb += huge_page_size(hstate_vma(vma));
@@ -867,8 +872,8 @@ static int show_smap(struct seq_file *m, void *v)
 	__show_smap(m, &mss, false);
 
 	seq_printf(m, "THPeligible:    %8u\n",
-		   !!thp_vma_allowable_orders(vma, vma->vm_flags, true, false,
-					      true, THP_ORDERS_ALL));
+		   !!thp_vma_allowable_orders(vma, vma->vm_flags,
+			   TVA_SMAPS | TVA_ENFORCE_SYSFS, THP_ORDERS_ALL));
 
 	if (arch_pkeys_enabled())
 		seq_printf(m, "ProtectionKey:  %8u\n", vma_pkey(vma));
@@ -966,12 +971,17 @@ static int show_smaps_rollup(struct seq_file *m, void *v)
 				break;
 
 			/* Case 1 and 2 above */
-			if (vma->vm_start >= last_vma_end)
+			if (vma->vm_start >= last_vma_end) {
+				smap_gather_stats(vma, &mss, 0);
+				last_vma_end = vma->vm_end;
 				continue;
+			}
 
 			/* Case 4 above */
-			if (vma->vm_end > last_vma_end)
+			if (vma->vm_end > last_vma_end) {
 				smap_gather_stats(vma, &mss, last_vma_end);
+				last_vma_end = vma->vm_end;
+			}
 		}
 	} for_each_vma(vmi, vma);
 
@@ -1162,7 +1172,7 @@ static int clear_refs_pte_range(pmd_t *pmd, unsigned long addr,
 	struct vm_area_struct *vma = walk->vma;
 	pte_t *pte, ptent;
 	spinlock_t *ptl;
-	struct page *page;
+	struct folio *folio;
 
 	ptl = pmd_trans_huge_lock(pmd, vma);
 	if (ptl) {
@@ -1174,12 +1184,12 @@ static int clear_refs_pte_range(pmd_t *pmd, unsigned long addr,
 		if (!pmd_present(*pmd))
 			goto out;
 
-		page = pmd_page(*pmd);
+		folio = pmd_folio(*pmd);
 
 		/* Clear accessed and referenced bits. */
 		pmdp_test_and_clear_young(vma, addr, pmd);
-		test_and_clear_page_young(page);
-		ClearPageReferenced(page);
+		folio_test_clear_young(folio);
+		folio_clear_referenced(folio);
 out:
 		spin_unlock(ptl);
 		return 0;
@@ -1201,14 +1211,14 @@ out:
 		if (!pte_present(ptent))
 			continue;
 
-		page = vm_normal_page(vma, addr, ptent);
-		if (!page)
+		folio = vm_normal_folio(vma, addr, ptent);
+		if (!folio)
 			continue;
 
 		/* Clear accessed and referenced bits. */
 		ptep_test_and_clear_young(vma, addr, pte);
-		test_and_clear_page_young(page);
-		ClearPageReferenced(page);
+		folio_test_clear_young(folio);
+		folio_clear_referenced(folio);
 	}
 	pte_unmap_unlock(pte - 1, ptl);
 	cond_resched();
@@ -1575,12 +1585,13 @@ static int pagemap_hugetlb_range(pte_t *ptep, unsigned long hmask,
 
 	pte = huge_ptep_get(ptep);
 	if (pte_present(pte)) {
-		struct page *page = pte_page(pte);
+		struct folio *folio = page_folio(pte_page(pte));
 
-		if (!PageAnon(page))
+		if (!folio_test_anon(folio))
 			flags |= PM_FILE;
 
-		if (page_mapcount(page) == 1)
+		if (!folio_likely_mapped_shared(folio) &&
+		    !hugetlb_pmd_shared(ptep))
 			flags |= PM_MMAP_EXCLUSIVE;
 
 		if (huge_pte_uffd_wp(pte))
@@ -2552,28 +2563,29 @@ struct numa_maps_private {
 static void gather_stats(struct page *page, struct numa_maps *md, int pte_dirty,
 			unsigned long nr_pages)
 {
+	struct folio *folio = page_folio(page);
 	int count = page_mapcount(page);
 
 	md->pages += nr_pages;
-	if (pte_dirty || PageDirty(page))
+	if (pte_dirty || folio_test_dirty(folio))
 		md->dirty += nr_pages;
 
-	if (PageSwapCache(page))
+	if (folio_test_swapcache(folio))
 		md->swapcache += nr_pages;
 
-	if (PageActive(page) || PageUnevictable(page))
+	if (folio_test_active(folio) || folio_test_unevictable(folio))
 		md->active += nr_pages;
 
-	if (PageWriteback(page))
+	if (folio_test_writeback(folio))
 		md->writeback += nr_pages;
 
-	if (PageAnon(page))
+	if (folio_test_anon(folio))
 		md->anon += nr_pages;
 
 	if (count > md->mapcount_max)
 		md->mapcount_max = count;
 
-	md->node[page_to_nid(page)] += nr_pages;
+	md->node[folio_nid(folio)] += nr_pages;
 }
 
 static struct page *can_gather_numa_stats(pte_t pte, struct vm_area_struct *vma,
