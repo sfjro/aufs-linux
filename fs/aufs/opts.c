@@ -496,10 +496,8 @@ static int au_opt_simple(struct super_block *sb, struct au_opt *opt,
 		if (opt->tf) {
 			au_opt_set(sbinfo->si_mntflags, DIO);
 			au_fset_opts(opts->flags, REFRESH_DYAOP);
-		} else {
-			au_opt_clr(sbinfo->si_mntflags, DIO);
-			au_fset_opts(opts->flags, REFRESH_DYAOP);
-		}
+		} else
+			pr_warn_once("ignored nodio\n");
 		break;
 
 	case Opt_fhsm_sec:
