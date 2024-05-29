@@ -13,6 +13,7 @@
 #ifdef __KERNEL__
 
 #include <linux/path.h>
+#include <linux/time.h>
 
 struct inode;
 struct file;
