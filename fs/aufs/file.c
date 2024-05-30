@@ -324,6 +324,7 @@ int au_reopen_nondir(struct file *file)
 	au_set_fbtop(file, btop);
 	au_set_h_fptr(file, btop, h_file);
 	au_update_figen(file);
+	file->f_mode |= h_file->f_mode & FMODE_CAN_ODIRECT;
 	/* todo: necessary? */
 	/* file->f_ra = h_file->f_ra; */
 
