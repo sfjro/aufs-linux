@@ -63,6 +63,7 @@ int au_do_open_nondir(struct file *file, int flags, struct file *h_file)
 	au_set_fbtop(file, bindex);
 	au_set_h_fptr(file, bindex, h_file);
 	au_update_figen(file);
+	file->f_mode |= h_file->f_mode & FMODE_CAN_ODIRECT;
 	/* todo: necessary? */
 	/* file->f_ra = h_file->f_ra; */
 
