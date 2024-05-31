@@ -88,7 +88,7 @@ static int au_do_cpup_xattr(struct path *h_dst, struct path *h_src,
 				err = 0;
 			else if (err == -EOPNOTSUPP
 				 && (ignore_flags & au_xattr_out_of_list))
-				 err = 0;
+				err = 0;
 			else if (err && (verbose || au_debug_test()))
 				pr_err("%s, err %d\n", name, err);
 			goto out;

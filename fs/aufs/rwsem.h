@@ -39,10 +39,10 @@
 					  && debug_locks		\
 					  && lockdep_is_held(rw))
 #else
-#define AuRwMustReadLock(rw)	do {} while (0)
-#define AuRwMustWriteLock(rw)	do {} while (0)
-#define AuRwMustAnyLock(rw)	do {} while (0)
-#define AuRwDestroy(rw)		do {} while (0)
+AuStubVoid(AuRwMustReadLock, struct rw_semaphore *rw)
+AuStubVoid(AuRwMustWriteLock, struct rw_semaphore *rw)
+AuStubVoid(AuRwMustAnyLock, struct rw_semaphore *rw)
+AuStubVoid(AuRwDestroy, struct rw_semaphore *rw)
 #endif
 
 #define au_rw_init(rw)	init_rwsem(rw)
