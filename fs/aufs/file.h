@@ -289,7 +289,7 @@ static inline void au_do_vm_file_reset(struct vm_area_struct *vma,
 }
 
 #ifdef CONFIG_MMU
-#define AuDbgVmRegion(file, vma) do {} while (0)
+AuStubVoid(AuDbgVmRegion, struct file *file, struct vm_area_struct *vma)
 
 static inline void au_vm_file_reset(struct vm_area_struct *vma,
 				    struct file *file)
