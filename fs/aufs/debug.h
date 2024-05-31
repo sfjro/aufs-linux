@@ -178,14 +178,14 @@ AuStubVoid(au_dbg_verify_gen, struct dentry *parent, unsigned int sigen)
 AuStubVoid(au_dbg_verify_kthread, void)
 AuStubInt0(__init au_debug_init, void)
 
-#define AuDbgWhlist(w)		do {} while (0)
-#define AuDbgVdir(v)		do {} while (0)
-#define AuDbgInode(i)		do {} while (0)
-#define AuDbgDAlias(i)		do {} while (0)
-#define AuDbgDentry(d)		do {} while (0)
-#define AuDbgFile(f)		do {} while (0)
-#define AuDbgSb(sb)		do {} while (0)
-#define AuDbgSym(addr)		do {} while (0)
+AuStubVoid(AuDbgWhlist, struct au_nhash *whlist)
+AuStubVoid(AuDbgVdir, struct au_vdir *vdir)
+AuStubVoid(AuDbgInode, struct inode *inode)
+AuStubVoid(AuDbgDAlias, struct inode *inode)
+AuStubVoid(AuDbgDentry, struct dentry *dentry)
+AuStubVoid(AuDbgFile, struct file *filp)
+AuStubVoid(AuDbgSb, struct super_block *sb)
+AuStubVoid(AuDbgSym, void *addr)
 #endif /* CONFIG_AUFS_DEBUG */
 
 /* ---------------------------------------------------------------------- */
