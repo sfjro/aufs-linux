@@ -79,8 +79,7 @@ enum {
 			 | AuOpt_UDBA_REVAL \
 			 | AuOpt_PLINK \
 			 /* | AuOpt_DIRPERM1 */ \
-			 | AuOpt_WARN_PERM \
-			 | AuOpt_DIO)
+			 | AuOpt_WARN_PERM)
 #define AuOptMask_UDBA	(AuOpt_UDBA_NONE \
 			 | AuOpt_UDBA_REVAL \
 			 | AuOpt_UDBA_HNOTIFY)
