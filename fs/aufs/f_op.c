@@ -286,7 +286,12 @@ static ssize_t au_do_iter(struct file *h_file, int rw, struct kiocb *kio,
 	} else
 		/* currently there is no such fs */
 		WARN_ON_ONCE(1);
-	kio->ki_filp = file;
+	if (!is_sync_kiocb(kio)) {
+		/* do not restore ki_filp */
+		fput(file);
+		get_file(h_file);
+	} else
+		kio->ki_filp = file;
 
 out:
 	return err;
@@ -344,7 +349,12 @@ static ssize_t aufs_write_iter(struct kiocb *kio, struct iov_iter *iov_iter)
 	err = PTR_ERR(h_file);
 	if (IS_ERR(h_file))
 		goto out;
-
+	if (!is_sync_kiocb(kio)) {
+		/* .vs. sb_start_write() in aio_write() */
+		if (S_ISREG(inode->i_mode))
+			__sb_writers_acquired(inode->i_sb, SB_FREEZE_WRITE);
+		file_end_write(file);
+	}
 	err = au_do_iter(h_file, MAY_WRITE, kio, iov_iter);
 	au_write_post(inode, h_file, &wpre, err);
 
