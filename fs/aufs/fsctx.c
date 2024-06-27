@@ -47,6 +47,8 @@ static int au_fsctx_reconfigure(struct fs_context *fc)
 
 	root = fc->root;
 	sb = root->d_sb;
+	root = sb->s_root; /* "bind"-mount may give us non-root */
+	AuDebugOn(!IS_ROOT(root));
 	err = si_write_lock(sb, AuLock_FLUSH | AuLock_NOPLM);
 	if (!err) {
 		di_write_lock_child(root);
