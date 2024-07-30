@@ -11,8 +11,6 @@
 
 void au_hfput(struct au_hfile *hf, int execed)
 {
-	if (execed)
-		allow_write_access(hf->hf_file);
 	fput(hf->hf_file);
 	hf->hf_file = NULL;
 	au_lcnt_dec(&hf->hf_br->br_nfiles);

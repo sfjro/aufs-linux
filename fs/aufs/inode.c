@@ -289,7 +289,7 @@ static int reval_inode(struct inode *inode, struct dentry *dentry)
 	 * it can happen by UDBA and the obsoleted inode number.
 	 */
 	err = -EIO;
-	if (unlikely(inode->i_ino == parent_ino(dentry)))
+	if (unlikely(inode->i_ino == d_parent_ino(dentry)))
 		goto out;
 
 	err = 1;

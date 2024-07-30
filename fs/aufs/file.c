@@ -82,14 +82,6 @@ struct file *au_h_open(struct dentry *dentry, aufs_bindex_t bindex, int flags,
 	if (IS_ERR(h_file))
 		goto out_br;
 
-	if (flags & __FMODE_EXEC) {
-		err = deny_write_access(h_file);
-		if (unlikely(err)) {
-			fput(h_file);
-			h_file = ERR_PTR(err);
-			goto out_br;
-		}
-	}
 	fsnotify_open(h_file);
 	goto out; /* success */
 
