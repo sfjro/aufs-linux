@@ -3,6 +3,9 @@
 #define _NAMESPACE_H_
 #ifdef __KERNEL__
 
+#include <linux/cleanup.h>
+#include <linux/err.h>
+
 struct mnt_namespace;
 struct fs_struct;
 struct user_namespace;
@@ -12,6 +15,7 @@ struct vfsmount;
 extern struct mnt_namespace *copy_mnt_ns(unsigned long, struct mnt_namespace *,
 		struct user_namespace *, struct fs_struct *);
 extern void put_mnt_ns(struct mnt_namespace *ns);
+DEFINE_FREE(put_mnt_ns, struct mnt_namespace *, if (!IS_ERR_OR_NULL(_T)) put_mnt_ns(_T))
 extern struct ns_common *from_mnt_ns(struct mnt_namespace *);
 
 extern int is_current_mnt_ns(struct vfsmount *mnt);
