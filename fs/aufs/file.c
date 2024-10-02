@@ -779,11 +779,11 @@ static ssize_t aufs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 #ifdef CONFIG_AUFS_DEBUG
 static int aufs_write_begin(struct file *file, struct address_space *mapping,
 			    loff_t pos, unsigned len,
-			    struct page **pagep, void **fsdata)
+			    struct folio **foliop, void **fsdata)
 { AuUnsupport(); return 0; }
 static int aufs_write_end(struct file *file, struct address_space *mapping,
 			  loff_t pos, unsigned len, unsigned copied,
-			  struct page *page, void *fsdata)
+			  struct folio *folio, void *fsdata)
 { AuUnsupport(); return 0; }
 static int aufs_writepage(struct page *page, struct writeback_control *wbc)
 { AuUnsupport(); return 0; }

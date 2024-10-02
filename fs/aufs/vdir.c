@@ -740,6 +740,7 @@ int au_vdir_init(struct file *file)
 		goto out;
 
 	allocated = NULL;
+	inode = file_inode(file);
 	vdir_cache = au_fvdir_cache(file);
 	if (!vdir_cache) {
 		vdir_cache = alloc_vdir(file);
@@ -747,7 +748,8 @@ int au_vdir_init(struct file *file)
 		if (IS_ERR(vdir_cache))
 			goto out;
 		allocated = vdir_cache;
-	} else if (!file->f_pos && vdir_cache->vd_version != file->f_version) {
+	} else if (!file->f_pos
+		   && vdir_cache->vd_version != inode_query_iversion(inode)) {
 		/* test file->f_pos here instead of ctx->pos */
 		err = reinit_vdir(vdir_cache);
 		if (unlikely(err))
@@ -755,10 +757,8 @@ int au_vdir_init(struct file *file)
 	} else
 		return 0; /* success */
 
-	inode = file_inode(file);
 	err = copy_vdir(vdir_cache, au_ivdir(inode));
 	if (!err) {
-		file->f_version = inode_query_iversion(inode);
 		if (allocated)
 			au_set_fvdir_cache(file, allocated);
 	} else if (allocated)
