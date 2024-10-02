@@ -106,8 +106,7 @@ static int au_fsctx_fill_super(struct super_block *sb, struct fs_context *fc)
 	au_sbilist_add(sb);
 
 	/* all timestamps always follow the ones on the branch */
-	sb->s_flags |= SB_NOATIME | SB_NODIRATIME;
-	sb->s_flags |= SB_I_VERSION; /* do we really need this? */
+	sb->s_flags |= SB_NOATIME | SB_NODIRATIME | SB_I_VERSION;
 	sb->s_op = &aufs_sop;
 	sb->s_d_op = &aufs_dop;
 	sb->s_magic = AUFS_SUPER_MAGIC;
