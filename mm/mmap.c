@@ -3031,16 +3031,19 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 	vma_get_file(vma);
 	file = vma->vm_file;
 	prfile = vma->vm_prfile;
-	ret = do_mmap(vma->vm_file, start, size,
-			prot, flags, /*vm_flags*/0, pgoff, &populate, NULL);
-	if (!IS_ERR_VALUE(ret) && file && prfile) {
-		struct vm_area_struct *new_vma;
+	ret = security_mmap_file(vma->vm_file, prot, flags);
+	if (!ret) {
+		ret = do_mmap(vma->vm_file, start, size,
+			      prot, flags, /*vm_flags*/0, pgoff, &populate, NULL);
+		if (!IS_ERR_VALUE(ret) && file && prfile) {
+			struct vm_area_struct *new_vma;
 
-		new_vma = find_vma(mm, ret);
-		if (!new_vma->vm_prfile)
-			new_vma->vm_prfile = prfile;
-		if (prfile)
-			get_file(prfile);
+			new_vma = find_vma(mm, ret);
+			if (!new_vma->vm_prfile)
+				new_vma->vm_prfile = prfile;
+			if (prfile)
+				get_file(prfile);
+		}
 	}
 	/*
 	 * two fput()s instead of vma_fput(vma),
