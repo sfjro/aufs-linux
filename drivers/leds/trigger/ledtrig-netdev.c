@@ -221,8 +221,16 @@ static ssize_t device_name_show(struct device *dev,
 static int set_device_name(struct led_netdev_data *trigger_data,
 			   const char *name, size_t size)
 {
+	if (size >= IFNAMSIZ)
+		return -EINVAL;
+
 	cancel_delayed_work_sync(&trigger_data->work);
 
+	/*
+	 * Take RTNL lock before trigger_data lock to prevent potential
+	 * deadlock with netdev notifier registration.
+	 */
+	rtnl_lock();
 	mutex_lock(&trigger_data->lock);
 
 	if (trigger_data->net_dev) {
@@ -242,16 +250,14 @@ static int set_device_name(struct led_netdev_data *trigger_data,
 	trigger_data->carrier_link_up = false;
 	trigger_data->link_speed = SPEED_UNKNOWN;
 	trigger_data->duplex = DUPLEX_UNKNOWN;
-	if (trigger_data->net_dev != NULL) {
-		rtnl_lock();
+	if (trigger_data->net_dev)
 		get_device_state(trigger_data);
-		rtnl_unlock();
-	}
 
 	trigger_data->last_activity = 0;
 
 	set_baseline_state(trigger_data);
 	mutex_unlock(&trigger_data->lock);
+	rtnl_unlock();
 
 	return 0;
 }
@@ -262,9 +268,6 @@ static ssize_t device_name_store(struct device *dev,
 {
 	struct led_netdev_data *trigger_data = led_trigger_get_drvdata(dev);
 	int ret;
-
-	if (size >= IFNAMSIZ)
-		return -EINVAL;
 
 	ret = set_device_name(trigger_data, buf, size);
 
@@ -459,12 +462,12 @@ static int netdev_trig_notify(struct notifier_block *nb,
 	trigger_data->duplex = DUPLEX_UNKNOWN;
 	switch (evt) {
 	case NETDEV_CHANGENAME:
-		get_device_state(trigger_data);
-		fallthrough;
 	case NETDEV_REGISTER:
 		dev_put(trigger_data->net_dev);
 		dev_hold(dev);
 		trigger_data->net_dev = dev;
+		if (evt == NETDEV_CHANGENAME)
+			get_device_state(trigger_data);
 		break;
 	case NETDEV_UNREGISTER:
 		dev_put(trigger_data->net_dev);

@@ -60,7 +60,7 @@
 
 	memory@80000000 {
 		device_type = "memory";
-		reg = <0x00000000 0x80000000 0x00000000 0x40000000>; /* 1G RAM */
+		reg = <0x00000000 0x80000000 0x00000000 0x80000000>; /* 2G RAM */
 	};
 
 	opp-table {
@@ -1061,6 +1061,7 @@
 		vddc-supply = <&reg_1v2_dsi>;
 		vddmipi-supply = <&reg_1v2_dsi>;
 		vddio-supply = <&reg_1v8_dsi>;
+		status = "disabled";
 
 		dsi_bridge_ports: ports {
 			#address-cells = <1>;
@@ -1308,8 +1309,6 @@
 	       0 0 0 0
 	>;
 	tdm-slots = <2>;
-	rx-num-evt = <32>;
-	tx-num-evt = <32>;
 	#sound-dai-cells = <0>;
 	status = "disabled";
 };
@@ -1326,8 +1325,6 @@
 	       0 0 0 0
 	>;
 	tdm-slots = <2>;
-	rx-num-evt = <32>;
-	tx-num-evt = <32>;
 	#sound-dai-cells = <0>;
 	status = "disabled";
 };

@@ -3170,7 +3170,7 @@ static void mac80211_hwsim_get_et_strings(struct ieee80211_hw *hw,
 					  u32 sset, u8 *data)
 {
 	if (sset == ETH_SS_STATS)
-		memcpy(data, *mac80211_hwsim_gstrings_stats,
+		memcpy(data, mac80211_hwsim_gstrings_stats,
 		       sizeof(mac80211_hwsim_gstrings_stats));
 }
 
@@ -3795,7 +3795,7 @@ static int hwsim_pmsr_report_nl(struct sk_buff *msg, struct genl_info *info)
 	}
 
 	nla_for_each_nested(peer, peers, rem) {
-		struct cfg80211_pmsr_result result;
+		struct cfg80211_pmsr_result result = {};
 
 		err = mac80211_hwsim_parse_pmsr_result(peer, &result, info);
 		if (err)
