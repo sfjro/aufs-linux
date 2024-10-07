@@ -490,14 +490,10 @@ static int tcp_v6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 
 		ipv6_icmp_error(sk, skb, err, th->dest, ntohl(info), (u8 *)th);
 
-		if (!sock_owned_by_user(sk)) {
-			WRITE_ONCE(sk->sk_err, err);
-			sk_error_report(sk);		/* Wake people up to see the error (see connect in sock.c) */
-
-			tcp_done(sk);
-		} else {
+		if (!sock_owned_by_user(sk))
+			tcp_done_with_error(sk, err);
+		else
 			WRITE_ONCE(sk->sk_err_soft, err);
-		}
 		goto out;
 	case TCP_LISTEN:
 		break;
@@ -1200,9 +1196,9 @@ static void tcp_v6_timewait_ack(struct sock *sk, struct sk_buff *skb)
 	tcp_v6_send_ack(sk, skb, tcptw->tw_snd_nxt, tcptw->tw_rcv_nxt,
 			tcptw->tw_rcv_wnd >> tw->tw_rcv_wscale,
 			tcp_tw_tsval(tcptw),
-			tcptw->tw_ts_recent, tw->tw_bound_dev_if, &key,
-			tw->tw_tclass, cpu_to_be32(tw->tw_flowlabel), tw->tw_priority,
-			tw->tw_txhash);
+			READ_ONCE(tcptw->tw_ts_recent), tw->tw_bound_dev_if,
+			&key, tw->tw_tclass, cpu_to_be32(tw->tw_flowlabel),
+			tw->tw_priority, tw->tw_txhash);
 
 #ifdef CONFIG_TCP_AO
 out:

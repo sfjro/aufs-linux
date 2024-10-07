@@ -4861,6 +4861,7 @@ int iwl_mvm_roc_common(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		       const struct iwl_mvm_roc_ops *ops)
 {
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
+	struct ieee80211_vif *bss_vif = iwl_mvm_get_bss_vif(mvm);
 	u32 lmac_id;
 	int ret;
 
@@ -4873,9 +4874,12 @@ int iwl_mvm_roc_common(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	 */
 	flush_work(&mvm->roc_done_wk);
 
-	ret = iwl_mvm_esr_non_bss_link(mvm, vif, 0, true);
-	if (ret)
-		return ret;
+	if (!IS_ERR_OR_NULL(bss_vif)) {
+		ret = iwl_mvm_block_esr_sync(mvm, bss_vif,
+					     IWL_MVM_ESR_BLOCKED_ROC);
+		if (ret)
+			return ret;
+	}
 
 	mutex_lock(&mvm->mutex);
 
@@ -5815,6 +5819,10 @@ static void iwl_mvm_flush_no_vif(struct iwl_mvm *mvm, u32 queues, bool drop)
 	int i;
 
 	if (!iwl_mvm_has_new_tx_api(mvm)) {
+		/* we can't ask the firmware anything if it is dead */
+		if (test_bit(IWL_MVM_STATUS_HW_RESTART_REQUESTED,
+			     &mvm->status))
+			return;
 		if (drop) {
 			mutex_lock(&mvm->mutex);
 			iwl_mvm_flush_tx_path(mvm,
@@ -5910,8 +5918,11 @@ void iwl_mvm_mac_flush(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 
 	/* this can take a while, and we may need/want other operations
 	 * to succeed while doing this, so do it without the mutex held
+	 * If the firmware is dead, this can't work...
 	 */
-	if (!drop && !iwl_mvm_has_new_tx_api(mvm))
+	if (!drop && !iwl_mvm_has_new_tx_api(mvm) &&
+	    !test_bit(IWL_MVM_STATUS_HW_RESTART_REQUESTED,
+		      &mvm->status))
 		iwl_trans_wait_tx_queues_empty(mvm->trans, msk);
 }
 

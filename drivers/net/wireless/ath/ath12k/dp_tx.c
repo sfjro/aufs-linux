@@ -124,6 +124,60 @@ static void ath12k_hal_tx_cmd_ext_desc_setup(struct ath12k_base *ab,
 						 HAL_TX_MSDU_EXT_INFO1_ENCRYPT_TYPE);
 }
 
+static void ath12k_dp_tx_move_payload(struct sk_buff *skb,
+				      unsigned long delta,
+				      bool head)
+{
+	unsigned long len = skb->len;
+
+	if (head) {
+		skb_push(skb, delta);
+		memmove(skb->data, skb->data + delta, len);
+		skb_trim(skb, len);
+	} else {
+		skb_put(skb, delta);
+		memmove(skb->data + delta, skb->data, len);
+		skb_pull(skb, delta);
+	}
+}
+
+static int ath12k_dp_tx_align_payload(struct ath12k_base *ab,
+				      struct sk_buff **pskb)
+{
+	u32 iova_mask = ab->hw_params->iova_mask;
+	unsigned long offset, delta1, delta2;
+	struct sk_buff *skb2, *skb = *pskb;
+	unsigned int headroom = skb_headroom(skb);
+	int tailroom = skb_tailroom(skb);
+	int ret = 0;
+
+	offset = (unsigned long)skb->data & iova_mask;
+	delta1 = offset;
+	delta2 = iova_mask - offset + 1;
+
+	if (headroom >= delta1) {
+		ath12k_dp_tx_move_payload(skb, delta1, true);
+	} else if (tailroom >= delta2) {
+		ath12k_dp_tx_move_payload(skb, delta2, false);
+	} else {
+		skb2 = skb_realloc_headroom(skb, iova_mask);
+		if (!skb2) {
+			ret = -ENOMEM;
+			goto out;
+		}
+
+		dev_kfree_skb_any(skb);
+
+		offset = (unsigned long)skb2->data & iova_mask;
+		if (offset)
+			ath12k_dp_tx_move_payload(skb2, offset, true);
+		*pskb = skb2;
+	}
+
+out:
+	return ret;
+}
+
 int ath12k_dp_tx(struct ath12k *ar, struct ath12k_vif *arvif,
 		 struct sk_buff *skb)
 {
@@ -145,6 +199,7 @@ int ath12k_dp_tx(struct ath12k *ar, struct ath12k_vif *arvif,
 	u8 ring_selector, ring_map = 0;
 	bool tcl_ring_retry;
 	bool msdu_ext_desc = false;
+	u32 iova_mask = ab->hw_params->iova_mask;
 
 	if (test_bit(ATH12K_FLAG_CRASH_FLUSH, &ar->ab->dev_flags))
 		return -ESHUTDOWN;
@@ -240,6 +295,23 @@ tcl_ring_sel:
 		goto fail_remove_tx_buf;
 	}
 
+	if (iova_mask &&
+	    (unsigned long)skb->data & iova_mask) {
+		ret = ath12k_dp_tx_align_payload(ab, &skb);
+		if (ret) {
+			ath12k_warn(ab, "failed to align TX buffer %d\n", ret);
+			/* don't bail out, give original buffer
+			 * a chance even unaligned.
+			 */
+			goto map;
+		}
+
+		/* hdr is pointing to a wrong place after alignment,
+		 * so refresh it for later use.
+		 */
+		hdr = (void *)skb->data;
+	}
+map:
 	ti.paddr = dma_map_single(ab->dev, skb->data, skb->len, DMA_TO_DEVICE);
 	if (dma_mapping_error(ab->dev, ti.paddr)) {
 		atomic_inc(&ab->soc_stats.tx_err.misc_fail);
@@ -352,15 +424,15 @@ static void ath12k_dp_tx_free_txbuf(struct ath12k_base *ab,
 	u8 pdev_id = ath12k_hw_mac_id_to_pdev_id(ab->hw_params, mac_id);
 
 	skb_cb = ATH12K_SKB_CB(msdu);
+	ar = ab->pdevs[pdev_id].ar;
 
 	dma_unmap_single(ab->dev, skb_cb->paddr, msdu->len, DMA_TO_DEVICE);
 	if (skb_cb->paddr_ext_desc)
 		dma_unmap_single(ab->dev, skb_cb->paddr_ext_desc,
 				 sizeof(struct hal_tx_msdu_ext_desc), DMA_TO_DEVICE);
 
-	dev_kfree_skb_any(msdu);
+	ieee80211_free_txskb(ar->ah->hw, msdu);
 
-	ar = ab->pdevs[pdev_id].ar;
 	if (atomic_dec_and_test(&ar->dp.num_tx_pending))
 		wake_up(&ar->dp.tx_empty_waitq);
 }
@@ -448,6 +520,7 @@ static void ath12k_dp_tx_complete_msdu(struct ath12k *ar,
 				       struct hal_tx_status *ts)
 {
 	struct ath12k_base *ab = ar->ab;
+	struct ath12k_hw *ah = ar->ah;
 	struct ieee80211_tx_info *info;
 	struct ath12k_skb_cb *skb_cb;
 
@@ -466,12 +539,12 @@ static void ath12k_dp_tx_complete_msdu(struct ath12k *ar,
 	rcu_read_lock();
 
 	if (!rcu_dereference(ab->pdevs_active[ar->pdev_idx])) {
-		dev_kfree_skb_any(msdu);
+		ieee80211_free_txskb(ah->hw, msdu);
 		goto exit;
 	}
 
 	if (!skb_cb->vif) {
-		dev_kfree_skb_any(msdu);
+		ieee80211_free_txskb(ah->hw, msdu);
 		goto exit;
 	}
 
@@ -481,17 +554,35 @@ static void ath12k_dp_tx_complete_msdu(struct ath12k *ar,
 	/* skip tx rate update from ieee80211_status*/
 	info->status.rates[0].idx = -1;
 
-	if (ts->status == HAL_WBM_TQM_REL_REASON_FRAME_ACKED &&
-	    !(info->flags & IEEE80211_TX_CTL_NO_ACK)) {
-		info->flags |= IEEE80211_TX_STAT_ACK;
-		info->status.ack_signal = ATH12K_DEFAULT_NOISE_FLOOR +
-					  ts->ack_rssi;
-		info->status.flags = IEEE80211_TX_STATUS_ACK_SIGNAL_VALID;
+	switch (ts->status) {
+	case HAL_WBM_TQM_REL_REASON_FRAME_ACKED:
+		if (!(info->flags & IEEE80211_TX_CTL_NO_ACK)) {
+			info->flags |= IEEE80211_TX_STAT_ACK;
+			info->status.ack_signal = ATH12K_DEFAULT_NOISE_FLOOR +
+						  ts->ack_rssi;
+			info->status.flags = IEEE80211_TX_STATUS_ACK_SIGNAL_VALID;
+		}
+		break;
+	case HAL_WBM_TQM_REL_REASON_CMD_REMOVE_TX:
+		if (info->flags & IEEE80211_TX_CTL_NO_ACK) {
+			info->flags |= IEEE80211_TX_STAT_NOACK_TRANSMITTED;
+			break;
+		}
+		fallthrough;
+	case HAL_WBM_TQM_REL_REASON_CMD_REMOVE_MPDU:
+	case HAL_WBM_TQM_REL_REASON_DROP_THRESHOLD:
+	case HAL_WBM_TQM_REL_REASON_CMD_REMOVE_AGED_FRAMES:
+		/* The failure status is due to internal firmware tx failure
+		 * hence drop the frame; do not update the status of frame to
+		 * the upper layer
+		 */
+		ieee80211_free_txskb(ah->hw, msdu);
+		goto exit;
+	default:
+		ath12k_dbg(ab, ATH12K_DBG_DP_TX, "tx frame is not acked status %d\n",
+			   ts->status);
+		break;
 	}
-
-	if (ts->status == HAL_WBM_TQM_REL_REASON_CMD_REMOVE_TX &&
-	    (info->flags & IEEE80211_TX_CTL_NO_ACK))
-		info->flags |= IEEE80211_TX_STAT_NOACK_TRANSMITTED;
 
 	/* NOTE: Tx rate status reporting. Tx completion status does not have
 	 * necessary information (for example nss) to build the tx rate.

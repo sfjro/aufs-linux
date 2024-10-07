@@ -479,7 +479,6 @@ int mddev_suspend(struct mddev *mddev, bool interruptible)
 	 */
 	WRITE_ONCE(mddev->suspended, mddev->suspended + 1);
 
-	del_timer_sync(&mddev->safemode_timer);
 	/* restrict memory reclaim I/O during raid array is suspend */
 	mddev->noio_flag = memalloc_noio_save();
 
@@ -550,13 +549,9 @@ static void md_end_flush(struct bio *bio)
 
 	rdev_dec_pending(rdev, mddev);
 
-	if (atomic_dec_and_test(&mddev->flush_pending)) {
-		/* The pair is percpu_ref_get() from md_flush_request() */
-		percpu_ref_put(&mddev->active_io);
-
+	if (atomic_dec_and_test(&mddev->flush_pending))
 		/* The pre-request flush has finished */
 		queue_work(md_wq, &mddev->flush_work);
-	}
 }
 
 static void md_submit_flush_data(struct work_struct *ws);
@@ -587,12 +582,8 @@ static void submit_flushes(struct work_struct *ws)
 			rcu_read_lock();
 		}
 	rcu_read_unlock();
-	if (atomic_dec_and_test(&mddev->flush_pending)) {
-		/* The pair is percpu_ref_get() from md_flush_request() */
-		percpu_ref_put(&mddev->active_io);
-
+	if (atomic_dec_and_test(&mddev->flush_pending))
 		queue_work(md_wq, &mddev->flush_work);
-	}
 }
 
 static void md_submit_flush_data(struct work_struct *ws)
@@ -617,8 +608,20 @@ static void md_submit_flush_data(struct work_struct *ws)
 		bio_endio(bio);
 	} else {
 		bio->bi_opf &= ~REQ_PREFLUSH;
-		md_handle_request(mddev, bio);
+
+		/*
+		 * make_requst() will never return error here, it only
+		 * returns error in raid5_make_request() by dm-raid.
+		 * Since dm always splits data and flush operation into
+		 * two separate io, io size of flush submitted by dm
+		 * always is 0, make_request() will not be called here.
+		 */
+		if (WARN_ON_ONCE(!mddev->pers->make_request(mddev, bio)))
+			bio_io_error(bio);;
 	}
+
+	/* The pair is percpu_ref_get() from md_flush_request() */
+	percpu_ref_put(&mddev->active_io);
 }
 
 /*
@@ -7742,12 +7745,6 @@ static int md_ioctl(struct block_device *bdev, blk_mode_t mode,
 		return get_bitmap_file(mddev, argp);
 	}
 
-	if (cmd == HOT_REMOVE_DISK)
-		/* need to ensure recovery thread has run */
-		wait_event_interruptible_timeout(mddev->sb_wait,
-						 !test_bit(MD_RECOVERY_NEEDED,
-							   &mddev->recovery),
-						 msecs_to_jiffies(5000));
 	if (cmd == STOP_ARRAY || cmd == STOP_ARRAY_RO) {
 		/* Need to flush page cache, and ensure no-one else opens
 		 * and writes
@@ -8641,17 +8638,16 @@ EXPORT_SYMBOL(md_done_sync);
  * A return value of 'false' means that the write wasn't recorded
  * and cannot proceed as the array is being suspend.
  */
-bool md_write_start(struct mddev *mddev, struct bio *bi)
+void md_write_start(struct mddev *mddev, struct bio *bi)
 {
 	int did_change = 0;
 
 	if (bio_data_dir(bi) != WRITE)
-		return true;
+		return;
 
 	BUG_ON(mddev->ro == MD_RDONLY);
 	if (mddev->ro == MD_AUTO_READ) {
 		/* need to switch to read/write */
-		flush_work(&mddev->sync_work);
 		mddev->ro = MD_RDWR;
 		set_bit(MD_RECOVERY_NEEDED, &mddev->recovery);
 		md_wakeup_thread(mddev->thread);
@@ -8679,15 +8675,9 @@ bool md_write_start(struct mddev *mddev, struct bio *bi)
 	if (did_change)
 		sysfs_notify_dirent_safe(mddev->sysfs_state);
 	if (!mddev->has_superblocks)
-		return true;
+		return;
 	wait_event(mddev->sb_wait,
-		   !test_bit(MD_SB_CHANGE_PENDING, &mddev->sb_flags) ||
-		   is_md_suspended(mddev));
-	if (test_bit(MD_SB_CHANGE_PENDING, &mddev->sb_flags)) {
-		percpu_ref_put(&mddev->writes_pending);
-		return false;
-	}
-	return true;
+		   !test_bit(MD_SB_CHANGE_PENDING, &mddev->sb_flags));
 }
 EXPORT_SYMBOL(md_write_start);
 

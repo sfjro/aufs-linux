@@ -47,6 +47,7 @@ void iwl_mvm_te_clear_data(struct iwl_mvm *mvm,
 
 static void iwl_mvm_cleanup_roc(struct iwl_mvm *mvm)
 {
+	struct ieee80211_vif *bss_vif = iwl_mvm_get_bss_vif(mvm);
 	struct ieee80211_vif *vif = mvm->p2p_device_vif;
 
 	lockdep_assert_held(&mvm->mutex);
@@ -106,22 +107,20 @@ static void iwl_mvm_cleanup_roc(struct iwl_mvm *mvm)
 		iwl_mvm_flush_sta(mvm, mvm->aux_sta.sta_id,
 				  mvm->aux_sta.tfd_queue_msk);
 
-		if (mvm->mld_api_is_used) {
-			iwl_mvm_mld_rm_aux_sta(mvm);
-			mutex_unlock(&mvm->mutex);
-			return;
-		}
-
 		/* In newer version of this command an aux station is added only
 		 * in cases of dedicated tx queue and need to be removed in end
-		 * of use */
-		if (iwl_mvm_has_new_station_api(mvm->fw))
+		 * of use. For the even newer mld api, use the appropriate
+		 * function.
+		 */
+		if (mvm->mld_api_is_used)
+			iwl_mvm_mld_rm_aux_sta(mvm);
+		else if (iwl_mvm_has_new_station_api(mvm->fw))
 			iwl_mvm_rm_aux_sta(mvm);
 	}
 
+	if (!IS_ERR_OR_NULL(bss_vif))
+		iwl_mvm_unblock_esr(mvm, bss_vif, IWL_MVM_ESR_BLOCKED_ROC);
 	mutex_unlock(&mvm->mutex);
-	if (vif)
-		iwl_mvm_esr_non_bss_link(mvm, vif, 0, false);
 }
 
 void iwl_mvm_roc_done_wk(struct work_struct *wk)

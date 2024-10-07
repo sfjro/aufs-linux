@@ -106,8 +106,7 @@ config DRM_KMS_HELPER
 
 config DRM_PANIC
 	bool "Display a user-friendly message when a kernel panic occurs"
-	depends on DRM && !FRAMEBUFFER_CONSOLE
-	select DRM_KMS_HELPER
+	depends on DRM && !(FRAMEBUFFER_CONSOLE && VT_CONSOLE)
 	select FONT_SUPPORT
 	help
 	  Enable a drm panic handler, which will display a user-friendly message
@@ -254,6 +253,7 @@ config DRM_EXEC
 config DRM_GPUVM
 	tristate
 	depends on DRM
+	select DRM_EXEC
 	help
 	  GPU-VM representation providing helpers to manage a GPUs virtual
 	  address space

@@ -115,6 +115,19 @@ unsigned long __mlx5_umem_find_best_quantized_pgoff(
 		__mlx5_bit_sz(typ, page_offset_fld), 0, scale,                 \
 		page_offset_quantized)
 
+static inline unsigned long
+mlx5_umem_dmabuf_find_best_pgsz(struct ib_umem_dmabuf *umem_dmabuf)
+{
+	/*
+	 * mkeys used for dmabuf are fixed at PAGE_SIZE because we must be able
+	 * to hold any sgl after a move operation. Ideally the mkc page size
+	 * could be changed at runtime to be optimal, but right now the driver
+	 * cannot do that.
+	 */
+	return ib_umem_find_best_pgsz(&umem_dmabuf->umem, PAGE_SIZE,
+				      umem_dmabuf->umem.iova);
+}
+
 enum {
 	MLX5_IB_MMAP_OFFSET_START = 9,
 	MLX5_IB_MMAP_OFFSET_END = 255,
@@ -782,6 +795,7 @@ struct mlx5_cache_ent {
 	u8 is_tmp:1;
 	u8 disabled:1;
 	u8 fill_to_high_water:1;
+	u8 tmp_cleanup_scheduled:1;
 
 	/*
 	 * - limit is the low water mark for stored mkeys, 2* limit is the
@@ -813,7 +827,6 @@ struct mlx5_mkey_cache {
 	struct mutex		rb_lock;
 	struct dentry		*fs_root;
 	unsigned long		last_add;
-	struct delayed_work	remove_ent_dwork;
 };
 
 struct mlx5_ib_port_resources {
