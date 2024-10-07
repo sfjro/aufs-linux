@@ -360,7 +360,9 @@ struct iwl_mvm_vif_link_info {
  * @IWL_MVM_ESR_BLOCKED_WOWLAN: WOWLAN is preventing the enablement of EMLSR
  * @IWL_MVM_ESR_BLOCKED_TPT: block EMLSR when there is not enough traffic
  * @IWL_MVM_ESR_BLOCKED_FW: FW didn't recommended/forced exit from EMLSR
- * @IWL_MVM_ESR_BLOCKED_NON_BSS: An active non-bssid link's preventing EMLSR
+ * @IWL_MVM_ESR_BLOCKED_NON_BSS: An active non-BSS interface's link is
+ *	preventing EMLSR
+ * @IWL_MVM_ESR_BLOCKED_ROC: remain-on-channel is preventing EMLSR
  * @IWL_MVM_ESR_EXIT_MISSED_BEACON: exited EMLSR due to missed beacons
  * @IWL_MVM_ESR_EXIT_LOW_RSSI: link is deactivated/not allowed for EMLSR
  *	due to low RSSI.
@@ -377,6 +379,7 @@ enum iwl_mvm_esr_state {
 	IWL_MVM_ESR_BLOCKED_TPT		= 0x4,
 	IWL_MVM_ESR_BLOCKED_FW		= 0x8,
 	IWL_MVM_ESR_BLOCKED_NON_BSS	= 0x10,
+	IWL_MVM_ESR_BLOCKED_ROC		= 0x20,
 	IWL_MVM_ESR_EXIT_MISSED_BEACON	= 0x10000,
 	IWL_MVM_ESR_EXIT_LOW_RSSI	= 0x20000,
 	IWL_MVM_ESR_EXIT_COEX		= 0x40000,
@@ -1439,7 +1442,8 @@ iwl_mvm_rcu_dereference_vif_id(struct iwl_mvm *mvm, u8 vif_id, bool rcu)
 static inline struct ieee80211_bss_conf *
 iwl_mvm_rcu_fw_link_id_to_link_conf(struct iwl_mvm *mvm, u8 link_id, bool rcu)
 {
-	if (WARN_ON(link_id >= ARRAY_SIZE(mvm->link_id_to_link_conf)))
+	if (IWL_FW_CHECK(mvm, link_id >= ARRAY_SIZE(mvm->link_id_to_link_conf),
+			 "erroneous FW link ID: %d\n", link_id))
 		return NULL;
 
 	if (rcu)
@@ -1860,10 +1864,10 @@ static inline u8 iwl_mvm_get_valid_tx_ant(struct iwl_mvm *mvm)
 
 static inline u8 iwl_mvm_get_valid_rx_ant(struct iwl_mvm *mvm)
 {
-	u8 rx_ant = mvm->fw->valid_tx_ant;
+	u8 rx_ant = mvm->fw->valid_rx_ant;
 
 	if (mvm->nvm_data && mvm->nvm_data->valid_rx_ant)
-		rx_ant &= mvm->nvm_data->valid_tx_ant;
+		rx_ant &= mvm->nvm_data->valid_rx_ant;
 
 	if (mvm->set_rx_ant)
 		rx_ant &= mvm->set_rx_ant;

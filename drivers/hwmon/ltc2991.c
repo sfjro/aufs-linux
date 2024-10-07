@@ -42,9 +42,9 @@
 #define LTC2991_V7_V8_FILT_EN		BIT(7)
 #define LTC2991_V7_V8_TEMP_EN		BIT(5)
 #define LTC2991_V7_V8_DIFF_EN		BIT(4)
-#define LTC2991_V5_V6_FILT_EN		BIT(7)
-#define LTC2991_V5_V6_TEMP_EN		BIT(5)
-#define LTC2991_V5_V6_DIFF_EN		BIT(4)
+#define LTC2991_V5_V6_FILT_EN		BIT(3)
+#define LTC2991_V5_V6_TEMP_EN		BIT(1)
+#define LTC2991_V5_V6_DIFF_EN		BIT(0)
 
 #define LTC2991_REPEAT_ACQ_EN		BIT(4)
 #define LTC2991_T_INT_FILT_EN		BIT(3)
@@ -225,8 +225,8 @@ static umode_t ltc2991_is_visible(const void *data,
 	case hwmon_temp:
 		switch (attr) {
 		case hwmon_temp_input:
-			if (st->temp_en[channel] ||
-			    channel == LTC2991_T_INT_CH_NR)
+			if (channel == LTC2991_T_INT_CH_NR ||
+			    st->temp_en[channel])
 				return 0444;
 			break;
 		}

@@ -2292,6 +2292,13 @@ struct ath12k_wmi_host_mem_chunk_arg {
 	u32 req_id;
 };
 
+enum ath12k_peer_metadata_version {
+	ATH12K_PEER_METADATA_V0,
+	ATH12K_PEER_METADATA_V1,
+	ATH12K_PEER_METADATA_V1A,
+	ATH12K_PEER_METADATA_V1B
+};
+
 struct ath12k_wmi_resource_config_arg {
 	u32 num_vdevs;
 	u32 num_peers;
@@ -2354,8 +2361,10 @@ struct ath12k_wmi_resource_config_arg {
 	u32 sched_params;
 	u32 twt_ap_pdev_count;
 	u32 twt_ap_sta_count;
+	enum ath12k_peer_metadata_version peer_metadata_ver;
+	u32 ema_max_vap_cnt;
+	u32 ema_max_profile_period;
 	bool is_reg_cc_ext_event_supported;
-	u8  dp_peer_meta_data_ver;
 };
 
 struct ath12k_wmi_init_cmd_arg {
@@ -2410,6 +2419,7 @@ struct wmi_init_cmd {
 #define WMI_RSRC_CFG_HOST_SVC_FLAG_REG_CC_EXT_SUPPORT_BIT 4
 #define WMI_RSRC_CFG_FLAGS2_RX_PEER_METADATA_VERSION		GENMASK(5, 4)
 #define WMI_RSRC_CFG_FLAG1_BSS_CHANNEL_INFO_64	BIT(5)
+#define WMI_RSRC_CFG_FLAGS2_CALC_NEXT_DTIM_COUNT_SET      BIT(9)
 
 struct ath12k_wmi_resource_config_params {
 	__le32 tlv_header;
@@ -3094,6 +3104,7 @@ struct wmi_pdev_bss_chan_info_req_cmd {
 	__le32 tlv_header;
 	/* ref wmi_bss_chan_info_req_type */
 	__le32 req_type;
+	__le32 pdev_id;
 } __packed;
 
 struct wmi_ap_ps_peer_cmd {
@@ -4043,7 +4054,6 @@ struct wmi_vdev_stopped_event {
 } __packed;
 
 struct wmi_pdev_bss_chan_info_event {
-	__le32 pdev_id;
 	__le32 freq;	/* Units in MHz */
 	__le32 noise_floor;	/* units are dBm */
 	/* rx clear - how often the channel was unused */
@@ -4061,6 +4071,7 @@ struct wmi_pdev_bss_chan_info_event {
 	/*rx_cycle cnt for my bss in 64bits format */
 	__le32 rx_bss_cycle_count_low;
 	__le32 rx_bss_cycle_count_high;
+	__le32 pdev_id;
 } __packed;
 
 #define WMI_VDEV_INSTALL_KEY_COMPL_STATUS_SUCCESS 0

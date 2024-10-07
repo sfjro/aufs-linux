@@ -29,6 +29,7 @@
 #include <linux/msg.h>
 #include <linux/overflow.h>
 #include <net/flow.h>
+#include <net/sock.h>
 
 /* How many LSMs were built into the kernel? */
 #define LSM_COUNT (__end_lsm_info - __start_lsm_info)
@@ -227,6 +228,7 @@ static void __init lsm_set_blob_sizes(struct lsm_blob_sizes *needed)
 	lsm_set_blob_size(&needed->lbs_inode, &blob_sizes.lbs_inode);
 	lsm_set_blob_size(&needed->lbs_ipc, &blob_sizes.lbs_ipc);
 	lsm_set_blob_size(&needed->lbs_msg_msg, &blob_sizes.lbs_msg_msg);
+	lsm_set_blob_size(&needed->lbs_sock, &blob_sizes.lbs_sock);
 	lsm_set_blob_size(&needed->lbs_superblock, &blob_sizes.lbs_superblock);
 	lsm_set_blob_size(&needed->lbs_task, &blob_sizes.lbs_task);
 	lsm_set_blob_size(&needed->lbs_xattr_count,
@@ -401,6 +403,7 @@ static void __init ordered_lsm_init(void)
 	init_debug("inode blob size      = %d\n", blob_sizes.lbs_inode);
 	init_debug("ipc blob size        = %d\n", blob_sizes.lbs_ipc);
 	init_debug("msg_msg blob size    = %d\n", blob_sizes.lbs_msg_msg);
+	init_debug("sock blob size       = %d\n", blob_sizes.lbs_sock);
 	init_debug("superblock blob size = %d\n", blob_sizes.lbs_superblock);
 	init_debug("task blob size       = %d\n", blob_sizes.lbs_task);
 	init_debug("xattr slots          = %d\n", blob_sizes.lbs_xattr_count);
@@ -1596,9 +1599,8 @@ int security_inode_alloc(struct inode *inode)
 
 static void inode_free_by_rcu(struct rcu_head *head)
 {
-	/*
-	 * The rcu head is at the start of the inode blob
-	 */
+	/* The rcu head is at the start of the inode blob */
+	call_void_hook(inode_free_security_rcu, head);
 	kmem_cache_free(lsm_inode_cache, head);
 }
 
@@ -1606,23 +1608,24 @@ static void inode_free_by_rcu(struct rcu_head *head)
  * security_inode_free() - Free an inode's LSM blob
  * @inode: the inode
  *
- * Deallocate the inode security structure and set @inode->i_security to NULL.
+ * Release any LSM resources associated with @inode, although due to the
+ * inode's RCU protections it is possible that the resources will not be
+ * fully released until after the current RCU grace period has elapsed.
+ *
+ * It is important for LSMs to note that despite being present in a call to
+ * security_inode_free(), @inode may still be referenced in a VFS path walk
+ * and calls to security_inode_permission() may be made during, or after,
+ * a call to security_inode_free().  For this reason the inode->i_security
+ * field is released via a call_rcu() callback and any LSMs which need to
+ * retain inode state for use in security_inode_permission() should only
+ * release that state in the inode_free_security_rcu() LSM hook callback.
  */
 void security_inode_free(struct inode *inode)
 {
 	call_void_hook(inode_free_security, inode);
-	/*
-	 * The inode may still be referenced in a path walk and
-	 * a call to security_inode_permission() can be made
-	 * after inode_free_security() is called. Ideally, the VFS
-	 * wouldn't do this, but fixing that is a much harder
-	 * job. For now, simply free the i_security via RCU, and
-	 * leave the current inode->i_security pointer intact.
-	 * The inode will be freed after the RCU grace period too.
-	 */
-	if (inode->i_security)
-		call_rcu((struct rcu_head *)inode->i_security,
-			 inode_free_by_rcu);
+	if (!inode->i_security)
+		return;
+	call_rcu((struct rcu_head *)inode->i_security, inode_free_by_rcu);
 }
 
 /**
@@ -2278,7 +2281,20 @@ int security_inode_getattr(const struct path *path)
  * @size: size of xattr value
  * @flags: flags
  *
- * Check permission before setting the extended attributes.
+ * This hook performs the desired permission checks before setting the extended
+ * attributes (xattrs) on @dentry.  It is important to note that we have some
+ * additional logic before the main LSM implementation calls to detect if we
+ * need to perform an additional capability check at the LSM layer.
+ *
+ * Normally we enforce a capability check prior to executing the various LSM
+ * hook implementations, but if a LSM wants to avoid this capability check,
+ * it can register a 'inode_xattr_skipcap' hook and return a value of 1 for
+ * xattrs that it wants to avoid the capability check, leaving the LSM fully
+ * responsible for enforcing the access control for the specific xattr.  If all
+ * of the enabled LSMs refrain from registering a 'inode_xattr_skipcap' hook,
+ * or return a 0 (the default return value), the capability check is still
+ * performed.  If no 'inode_xattr_skipcap' hooks are registered the capability
+ * check is performed.
  *
  * Return: Returns 0 if permission is granted.
  */
@@ -2286,20 +2302,20 @@ int security_inode_setxattr(struct mnt_idmap *idmap,
 			    struct dentry *dentry, const char *name,
 			    const void *value, size_t size, int flags)
 {
-	int ret;
+	int rc;
 
 	if (unlikely(IS_PRIVATE(d_backing_inode(dentry))))
 		return 0;
-	/*
-	 * SELinux and Smack integrate the cap call,
-	 * so assume that all LSMs supplying this call do so.
-	 */
-	ret = call_int_hook(inode_setxattr, idmap, dentry, name, value, size,
-			    flags);
 
-	if (ret == 1)
-		ret = cap_inode_setxattr(dentry, name, value, size, flags);
-	return ret;
+	/* enforce the capability checks at the lsm layer, if needed */
+	if (!call_int_hook(inode_xattr_skipcap, name)) {
+		rc = cap_inode_setxattr(dentry, name, value, size, flags);
+		if (rc)
+			return rc;
+	}
+
+	return call_int_hook(inode_setxattr, idmap, dentry, name, value, size,
+			     flags);
 }
 
 /**
@@ -2452,26 +2468,39 @@ int security_inode_listxattr(struct dentry *dentry)
  * @dentry: file
  * @name: xattr name
  *
- * Check permission before removing the extended attribute identified by @name
- * for @dentry.
+ * This hook performs the desired permission checks before setting the extended
+ * attributes (xattrs) on @dentry.  It is important to note that we have some
+ * additional logic before the main LSM implementation calls to detect if we
+ * need to perform an additional capability check at the LSM layer.
+ *
+ * Normally we enforce a capability check prior to executing the various LSM
+ * hook implementations, but if a LSM wants to avoid this capability check,
+ * it can register a 'inode_xattr_skipcap' hook and return a value of 1 for
+ * xattrs that it wants to avoid the capability check, leaving the LSM fully
+ * responsible for enforcing the access control for the specific xattr.  If all
+ * of the enabled LSMs refrain from registering a 'inode_xattr_skipcap' hook,
+ * or return a 0 (the default return value), the capability check is still
+ * performed.  If no 'inode_xattr_skipcap' hooks are registered the capability
+ * check is performed.
  *
  * Return: Returns 0 if permission is granted.
  */
 int security_inode_removexattr(struct mnt_idmap *idmap,
 			       struct dentry *dentry, const char *name)
 {
-	int ret;
+	int rc;
 
 	if (unlikely(IS_PRIVATE(d_backing_inode(dentry))))
 		return 0;
-	/*
-	 * SELinux and Smack integrate the cap call,
-	 * so assume that all LSMs supplying this call do so.
-	 */
-	ret = call_int_hook(inode_removexattr, idmap, dentry, name);
-	if (ret == 1)
-		ret = cap_inode_removexattr(idmap, dentry, name);
-	return ret;
+
+	/* enforce the capability checks at the lsm layer, if needed */
+	if (!call_int_hook(inode_xattr_skipcap, name)) {
+		rc = cap_inode_removexattr(idmap, dentry, name);
+		if (rc)
+			return rc;
+	}
+
+	return call_int_hook(inode_removexattr, idmap, dentry, name);
 }
 
 /**
@@ -4648,6 +4677,28 @@ int security_socket_getpeersec_dgram(struct socket *sock,
 EXPORT_SYMBOL(security_socket_getpeersec_dgram);
 
 /**
+ * lsm_sock_alloc - allocate a composite sock blob
+ * @sock: the sock that needs a blob
+ * @priority: allocation mode
+ *
+ * Allocate the sock blob for all the modules
+ *
+ * Returns 0, or -ENOMEM if memory can't be allocated.
+ */
+static int lsm_sock_alloc(struct sock *sock, gfp_t priority)
+{
+	if (blob_sizes.lbs_sock == 0) {
+		sock->sk_security = NULL;
+		return 0;
+	}
+
+	sock->sk_security = kzalloc(blob_sizes.lbs_sock, priority);
+	if (sock->sk_security == NULL)
+		return -ENOMEM;
+	return 0;
+}
+
+/**
  * security_sk_alloc() - Allocate and initialize a sock's LSM blob
  * @sk: sock
  * @family: protocol family
@@ -4660,7 +4711,14 @@ EXPORT_SYMBOL(security_socket_getpeersec_dgram);
  */
 int security_sk_alloc(struct sock *sk, int family, gfp_t priority)
 {
-	return call_int_hook(sk_alloc_security, sk, family, priority);
+	int rc = lsm_sock_alloc(sk, priority);
+
+	if (unlikely(rc))
+		return rc;
+	rc = call_int_hook(sk_alloc_security, sk, family, priority);
+	if (unlikely(rc))
+		security_sk_free(sk);
+	return rc;
 }
 
 /**
@@ -4672,6 +4730,8 @@ int security_sk_alloc(struct sock *sk, int family, gfp_t priority)
 void security_sk_free(struct sock *sk)
 {
 	call_void_hook(sk_free_security, sk);
+	kfree(sk->sk_security);
+	sk->sk_security = NULL;
 }
 
 /**

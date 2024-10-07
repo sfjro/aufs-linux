@@ -247,6 +247,26 @@ static int amd_pstate_get_energy_pref_index(struct amd_cpudata *cpudata)
 	return index;
 }
 
+static void pstate_update_perf(struct amd_cpudata *cpudata, u32 min_perf,
+			       u32 des_perf, u32 max_perf, bool fast_switch)
+{
+	if (fast_switch)
+		wrmsrl(MSR_AMD_CPPC_REQ, READ_ONCE(cpudata->cppc_req_cached));
+	else
+		wrmsrl_on_cpu(cpudata->cpu, MSR_AMD_CPPC_REQ,
+			      READ_ONCE(cpudata->cppc_req_cached));
+}
+
+DEFINE_STATIC_CALL(amd_pstate_update_perf, pstate_update_perf);
+
+static inline void amd_pstate_update_perf(struct amd_cpudata *cpudata,
+					  u32 min_perf, u32 des_perf,
+					  u32 max_perf, bool fast_switch)
+{
+	static_call(amd_pstate_update_perf)(cpudata, min_perf, des_perf,
+					    max_perf, fast_switch);
+}
+
 static int amd_pstate_set_epp(struct amd_cpudata *cpudata, u32 epp)
 {
 	int ret;
@@ -263,6 +283,9 @@ static int amd_pstate_set_epp(struct amd_cpudata *cpudata, u32 epp)
 		if (!ret)
 			cpudata->epp_cached = epp;
 	} else {
+		amd_pstate_update_perf(cpudata, cpudata->min_limit_perf, 0U,
+					     cpudata->max_limit_perf, false);
+
 		perf_ctrls.energy_perf = epp;
 		ret = cppc_set_epp_perf(cpudata->cpu, &perf_ctrls, 1);
 		if (ret) {
@@ -281,10 +304,8 @@ static int amd_pstate_set_energy_pref_index(struct amd_cpudata *cpudata,
 	int epp = -EINVAL;
 	int ret;
 
-	if (!pref_index) {
-		pr_debug("EPP pref_index is invalid\n");
-		return -EINVAL;
-	}
+	if (!pref_index)
+		epp = cpudata->epp_default;
 
 	if (epp == -EINVAL)
 		epp = epp_values[pref_index];
@@ -308,7 +329,7 @@ static inline int pstate_enable(bool enable)
 		return 0;
 
 	for_each_present_cpu(cpu) {
-		unsigned long logical_id = topology_logical_die_id(cpu);
+		unsigned long logical_id = topology_logical_package_id(cpu);
 
 		if (test_bit(logical_id, &logical_proc_id_mask))
 			continue;
@@ -452,16 +473,6 @@ static inline int amd_pstate_init_perf(struct amd_cpudata *cpudata)
 	return static_call(amd_pstate_init_perf)(cpudata);
 }
 
-static void pstate_update_perf(struct amd_cpudata *cpudata, u32 min_perf,
-			       u32 des_perf, u32 max_perf, bool fast_switch)
-{
-	if (fast_switch)
-		wrmsrl(MSR_AMD_CPPC_REQ, READ_ONCE(cpudata->cppc_req_cached));
-	else
-		wrmsrl_on_cpu(cpudata->cpu, MSR_AMD_CPPC_REQ,
-			      READ_ONCE(cpudata->cppc_req_cached));
-}
-
 static void cppc_update_perf(struct amd_cpudata *cpudata,
 			     u32 min_perf, u32 des_perf,
 			     u32 max_perf, bool fast_switch)
@@ -473,16 +484,6 @@ static void cppc_update_perf(struct amd_cpudata *cpudata,
 	perf_ctrls.desired_perf = des_perf;
 
 	cppc_set_perf(cpudata->cpu, &perf_ctrls);
-}
-
-DEFINE_STATIC_CALL(amd_pstate_update_perf, pstate_update_perf);
-
-static inline void amd_pstate_update_perf(struct amd_cpudata *cpudata,
-					  u32 min_perf, u32 des_perf,
-					  u32 max_perf, bool fast_switch)
-{
-	static_call(amd_pstate_update_perf)(cpudata, min_perf, des_perf,
-					    max_perf, fast_switch);
 }
 
 static inline bool amd_pstate_sample(struct amd_cpudata *cpudata)
@@ -1436,7 +1437,7 @@ static int amd_pstate_epp_cpu_init(struct cpufreq_policy *policy)
 
 	policy->driver_data = cpudata;
 
-	cpudata->epp_cached = amd_pstate_get_epp(cpudata, 0);
+	cpudata->epp_cached = cpudata->epp_default = amd_pstate_get_epp(cpudata, 0);
 
 	policy->min = policy->cpuinfo.min_freq;
 	policy->max = policy->cpuinfo.max_freq;
@@ -1763,8 +1764,13 @@ static int __init amd_pstate_init(void)
 	/* check if this machine need CPPC quirks */
 	dmi_check_system(amd_pstate_quirks_table);
 
-	switch (cppc_state) {
-	case AMD_PSTATE_UNDEFINED:
+	/*
+	* determine the driver mode from the command line or kernel config.
+	* If no command line input is provided, cppc_state will be AMD_PSTATE_UNDEFINED.
+	* command line options will override the kernel config settings.
+	*/
+
+	if (cppc_state == AMD_PSTATE_UNDEFINED) {
 		/* Disable on the following configs by default:
 		 * 1. Undefined platforms
 		 * 2. Server platforms
@@ -1776,15 +1782,20 @@ static int __init amd_pstate_init(void)
 			pr_info("driver load is disabled, boot with specific mode to enable this\n");
 			return -ENODEV;
 		}
-		ret = amd_pstate_set_driver(CONFIG_X86_AMD_PSTATE_DEFAULT_MODE);
-		if (ret)
-			return ret;
-		break;
+		/* get driver mode from kernel config option [1:4] */
+		cppc_state = CONFIG_X86_AMD_PSTATE_DEFAULT_MODE;
+	}
+
+	switch (cppc_state) {
 	case AMD_PSTATE_DISABLE:
+		pr_info("driver load is disabled, boot with specific mode to enable this\n");
 		return -ENODEV;
 	case AMD_PSTATE_PASSIVE:
 	case AMD_PSTATE_ACTIVE:
 	case AMD_PSTATE_GUIDED:
+		ret = amd_pstate_set_driver(cppc_state);
+		if (ret)
+			return ret;
 		break;
 	default:
 		return -EINVAL;
@@ -1805,7 +1816,7 @@ static int __init amd_pstate_init(void)
 	/* enable amd pstate feature */
 	ret = amd_pstate_enable(true);
 	if (ret) {
-		pr_err("failed to enable with return %d\n", ret);
+		pr_err("failed to enable driver mode(%d)\n", cppc_state);
 		return ret;
 	}
 

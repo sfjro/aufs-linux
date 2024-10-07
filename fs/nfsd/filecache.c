@@ -664,7 +664,7 @@ static int
 nfsd_file_lease_notifier_call(struct notifier_block *nb, unsigned long arg,
 			    void *data)
 {
-	struct file_lock *fl = data;
+	struct file_lease *fl = data;
 
 	/* Only close files for F_SETLEASE leases */
 	if (fl->c.flc_flags & FL_LEASE)
@@ -1035,8 +1035,6 @@ retry:
 	if (likely(ret == 0))
 		goto open_file;
 
-	if (ret == -EEXIST)
-		goto retry;
 	trace_nfsd_file_insert_err(rqstp, inode, may_flags, ret);
 	status = nfserr_jukebox;
 	goto construction_err;
@@ -1051,6 +1049,7 @@ wait_for_construction:
 			status = nfserr_jukebox;
 			goto construction_err;
 		}
+		nfsd_file_put(nf);
 		open_retry = false;
 		fh_put(fhp);
 		goto retry;

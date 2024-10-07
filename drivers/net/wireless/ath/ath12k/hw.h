@@ -78,8 +78,7 @@
 #define TARGET_NUM_WDS_ENTRIES		32
 #define TARGET_DMA_BURST_SIZE		1
 #define TARGET_RX_BATCHMODE		1
-#define TARGET_RX_PEER_METADATA_VER_V1A	2
-#define TARGET_RX_PEER_METADATA_VER_V1B	3
+#define TARGET_EMA_MAX_PROFILE_PERIOD	8
 
 #define ATH12K_HW_DEFAULT_QUEUE		0
 #define ATH12K_HW_MAX_QUEUES		4
@@ -96,6 +95,8 @@
 #define ATH12K_AMSS_FILE		"amss.bin"
 #define ATH12K_M3_FILE			"m3.bin"
 #define ATH12K_REGDB_FILE_NAME		"regdb.bin"
+
+#define ATH12K_PCIE_MAX_PAYLOAD_SIZE	128
 
 enum ath12k_hw_rate_cck {
 	ATH12K_HW_RATE_CCK_LP_11M = 0,
@@ -215,6 +216,8 @@ struct ath12k_hw_params {
 	bool supports_sta_ps;
 
 	const guid_t *acpi_guid;
+
+	u32 iova_mask;
 };
 
 struct ath12k_hw_ops {

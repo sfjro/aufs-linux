@@ -671,7 +671,8 @@ static int gmc_v9_0_process_interrupt(struct amdgpu_device *adev,
 	    (amdgpu_ip_version(adev, GC_HWIP, 0) >= IP_VERSION(9, 4, 2)))
 		return 0;
 
-	WREG32_P(hub->vm_l2_pro_fault_cntl, 1, ~1);
+	if (!amdgpu_sriov_vf(adev))
+		WREG32_P(hub->vm_l2_pro_fault_cntl, 1, ~1);
 
 	amdgpu_vm_update_fault_cache(adev, entry->pasid, addr, status, vmhub);
 
@@ -1910,7 +1911,7 @@ gmc_v9_0_init_sw_mem_ranges(struct amdgpu_device *adev,
 		break;
 	}
 
-	size = adev->gmc.real_vram_size >> AMDGPU_GPU_PAGE_SHIFT;
+	size = (adev->gmc.real_vram_size + SZ_16M) >> AMDGPU_GPU_PAGE_SHIFT;
 	size /= adev->gmc.num_mem_partitions;
 
 	for (i = 0; i < adev->gmc.num_mem_partitions; ++i) {
