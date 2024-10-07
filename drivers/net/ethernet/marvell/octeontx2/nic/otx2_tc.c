@@ -45,6 +45,9 @@ struct otx2_tc_flow {
 	bool				is_act_police;
 	u32				prio;
 	struct npc_install_flow_req	req;
+	u64				rate;
+	u32				burst;
+	bool				is_pps;
 };
 
 static void otx2_get_egress_burst_cfg(struct otx2_nic *nic, u32 burst,
@@ -282,6 +285,41 @@ static int otx2_tc_egress_matchall_delete(struct otx2_nic *nic,
 	return err;
 }
 
+static int otx2_tc_act_set_hw_police(struct otx2_nic *nic,
+				     struct otx2_tc_flow *node)
+{
+	int rc;
+
+	mutex_lock(&nic->mbox.lock);
+
+	rc = cn10k_alloc_leaf_profile(nic, &node->leaf_profile);
+	if (rc) {
+		mutex_unlock(&nic->mbox.lock);
+		return rc;
+	}
+
+	rc = cn10k_set_ipolicer_rate(nic, node->leaf_profile,
+				     node->burst, node->rate, node->is_pps);
+	if (rc)
+		goto free_leaf;
+
+	rc = cn10k_map_unmap_rq_policer(nic, node->rq, node->leaf_profile, true);
+	if (rc)
+		goto free_leaf;
+
+	mutex_unlock(&nic->mbox.lock);
+
+	return 0;
+
+free_leaf:
+	if (cn10k_free_leaf_profile(nic, node->leaf_profile))
+		netdev_err(nic->netdev,
+			   "Unable to free leaf bandwidth profile(%d)\n",
+			   node->leaf_profile);
+	mutex_unlock(&nic->mbox.lock);
+	return rc;
+}
+
 static int otx2_tc_act_set_police(struct otx2_nic *nic,
 				  struct otx2_tc_flow *node,
 				  struct flow_cls_offload *f,
@@ -298,39 +336,20 @@ static int otx2_tc_act_set_police(struct otx2_nic *nic,
 		return -EINVAL;
 	}
 
-	mutex_lock(&nic->mbox.lock);
-
-	rc = cn10k_alloc_leaf_profile(nic, &node->leaf_profile);
-	if (rc) {
-		mutex_unlock(&nic->mbox.lock);
-		return rc;
-	}
-
-	rc = cn10k_set_ipolicer_rate(nic, node->leaf_profile, burst, rate, pps);
-	if (rc)
-		goto free_leaf;
-
-	rc = cn10k_map_unmap_rq_policer(nic, rq_idx, node->leaf_profile, true);
-	if (rc)
-		goto free_leaf;
-
-	mutex_unlock(&nic->mbox.lock);
-
 	req->match_id = mark & 0xFFFFULL;
 	req->index = rq_idx;
 	req->op = NIX_RX_ACTIONOP_UCAST;
-	set_bit(rq_idx, &nic->rq_bmap);
+
 	node->is_act_police = true;
 	node->rq = rq_idx;
+	node->burst = burst;
+	node->rate = rate;
+	node->is_pps = pps;
 
-	return 0;
+	rc = otx2_tc_act_set_hw_police(nic, node);
+	if (!rc)
+		set_bit(rq_idx, &nic->rq_bmap);
 
-free_leaf:
-	if (cn10k_free_leaf_profile(nic, node->leaf_profile))
-		netdev_err(nic->netdev,
-			   "Unable to free leaf bandwidth profile(%d)\n",
-			   node->leaf_profile);
-	mutex_unlock(&nic->mbox.lock);
 	return rc;
 }
 
@@ -569,6 +588,7 @@ static int otx2_tc_prepare_flow(struct otx2_nic *nic, struct otx2_tc_flow *node,
 
 	if (flow_rule_match_key(rule, FLOW_DISSECTOR_KEY_CONTROL)) {
 		struct flow_match_control match;
+		u32 val;
 
 		flow_rule_match_control(rule, &match);
 		if (match.mask->flags & FLOW_DIS_FIRST_FRAG) {
@@ -577,12 +597,14 @@ static int otx2_tc_prepare_flow(struct otx2_nic *nic, struct otx2_tc_flow *node,
 		}
 
 		if (match.mask->flags & FLOW_DIS_IS_FRAGMENT) {
+			val = match.key->flags & FLOW_DIS_IS_FRAGMENT;
 			if (ntohs(flow_spec->etype) == ETH_P_IP) {
-				flow_spec->ip_flag = IPV4_FLAG_MORE;
+				flow_spec->ip_flag = val ? IPV4_FLAG_MORE : 0;
 				flow_mask->ip_flag = IPV4_FLAG_MORE;
 				req->features |= BIT_ULL(NPC_IPFRAG_IPV4);
 			} else if (ntohs(flow_spec->etype) == ETH_P_IPV6) {
-				flow_spec->next_header = IPPROTO_FRAGMENT;
+				flow_spec->next_header = val ?
+							 IPPROTO_FRAGMENT : 0;
 				flow_mask->next_header = 0xff;
 				req->features |= BIT_ULL(NPC_IPFRAG_IPV6);
 			} else {
@@ -986,6 +1008,11 @@ static int otx2_tc_del_flow(struct otx2_nic *nic,
 	}
 
 	if (flow_node->is_act_police) {
+		__clear_bit(flow_node->rq, &nic->rq_bmap);
+
+		if (nic->flags & OTX2_FLAG_INTF_DOWN)
+			goto free_mcam_flow;
+
 		mutex_lock(&nic->mbox.lock);
 
 		err = cn10k_map_unmap_rq_policer(nic, flow_node->rq,
@@ -1001,11 +1028,10 @@ static int otx2_tc_del_flow(struct otx2_nic *nic,
 				   "Unable to free leaf bandwidth profile(%d)\n",
 				   flow_node->leaf_profile);
 
-		__clear_bit(flow_node->rq, &nic->rq_bmap);
-
 		mutex_unlock(&nic->mbox.lock);
 	}
 
+free_mcam_flow:
 	otx2_del_mcam_flow_entry(nic, flow_node->entry, NULL);
 	otx2_tc_update_mcam_table(nic, flow_cfg, flow_node, false);
 	kfree_rcu(flow_node, rcu);
@@ -1024,6 +1050,11 @@ static int otx2_tc_add_flow(struct otx2_nic *nic,
 
 	if (!(nic->flags & OTX2_FLAG_TC_FLOWER_SUPPORT))
 		return -ENOMEM;
+
+	if (nic->flags & OTX2_FLAG_INTF_DOWN) {
+		NL_SET_ERR_MSG_MOD(extack, "Interface not initialized");
+		return -EINVAL;
+	}
 
 	if (flow_cfg->nr_flows == flow_cfg->max_flows) {
 		NL_SET_ERR_MSG_MOD(extack,
@@ -1384,3 +1415,45 @@ void otx2_shutdown_tc(struct otx2_nic *nic)
 	otx2_destroy_tc_flow_list(nic);
 }
 EXPORT_SYMBOL(otx2_shutdown_tc);
+
+static void otx2_tc_config_ingress_rule(struct otx2_nic *nic,
+					struct otx2_tc_flow *node)
+{
+	struct npc_install_flow_req *req;
+
+	if (otx2_tc_act_set_hw_police(nic, node))
+		return;
+
+	mutex_lock(&nic->mbox.lock);
+
+	req = otx2_mbox_alloc_msg_npc_install_flow(&nic->mbox);
+	if (!req)
+		goto err;
+
+	memcpy(req, &node->req, sizeof(struct npc_install_flow_req));
+
+	if (otx2_sync_mbox_msg(&nic->mbox))
+		netdev_err(nic->netdev,
+			   "Failed to install MCAM flow entry for ingress rule");
+err:
+	mutex_unlock(&nic->mbox.lock);
+}
+
+void otx2_tc_apply_ingress_police_rules(struct otx2_nic *nic)
+{
+	struct otx2_flow_config *flow_cfg = nic->flow_cfg;
+	struct otx2_tc_flow *node;
+
+	/* If any ingress policer rules exist for the interface then
+	 * apply those rules. Ingress policer rules depend on bandwidth
+	 * profiles linked to the receive queues. Since no receive queues
+	 * exist when interface is down, ingress policer rules are stored
+	 * and configured in hardware after all receive queues are allocated
+	 * in otx2_open.
+	 */
+	list_for_each_entry(node, &flow_cfg->flow_list_tc, list) {
+		if (node->is_act_police)
+			otx2_tc_config_ingress_rule(nic, node);
+	}
+}
+EXPORT_SYMBOL(otx2_tc_apply_ingress_police_rules);

@@ -839,7 +839,6 @@ static int apparmor_task_kill(struct task_struct *target, struct kernel_siginfo 
 		cl = aa_get_newest_cred_label(cred);
 		error = aa_may_signal(cred, cl, tc, tl, sig);
 		aa_put_label(cl);
-		return error;
 	} else {
 		cl = __begin_current_label_crit_section();
 		error = aa_may_signal(current_cred(), cl, tc, tl, sig);
@@ -1130,6 +1129,13 @@ static int apparmor_socket_sock_rcv_skb(struct sock *sk, struct sk_buff *skb)
 
 	if (!skb->secmark)
 		return 0;
+
+	/*
+	 * If reach here before socket_post_create hook is called, in which
+	 * case label is null, drop the packet.
+	 */
+	if (!ctx->label)
+		return -EACCES;
 
 	return apparmor_secmark_check(ctx->label, OP_RECVMSG, AA_MAY_RECEIVE,
 				      skb->secmark, sk);

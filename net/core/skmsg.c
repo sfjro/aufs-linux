@@ -434,7 +434,8 @@ int sk_msg_recvmsg(struct sock *sk, struct sk_psock *psock, struct msghdr *msg,
 			page = sg_page(sge);
 			if (copied + copy > len)
 				copy = len - copied;
-			copy = copy_page_to_iter(page, sge->offset, copy, iter);
+			if (copy)
+				copy = copy_page_to_iter(page, sge->offset, copy, iter);
 			if (!copy) {
 				copied = copied ? copied : -EFAULT;
 				goto out;
@@ -826,6 +827,8 @@ static void sk_psock_destroy(struct work_struct *work)
 
 	if (psock->sk_redir)
 		sock_put(psock->sk_redir);
+	if (psock->sk_pair)
+		sock_put(psock->sk_pair);
 	sock_put(psock->sk);
 	kfree(psock);
 }
@@ -1225,7 +1228,7 @@ static void sk_psock_verdict_data_ready(struct sock *sk)
 		rcu_read_lock();
 		psock = sk_psock(sk);
 		if (psock)
-			psock->saved_data_ready(sk);
+			sk_psock_data_ready(sk, psock);
 		rcu_read_unlock();
 	}
 }
