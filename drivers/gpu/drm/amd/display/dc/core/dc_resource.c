@@ -996,7 +996,7 @@ static void adjust_recout_for_visual_confirm(struct rect *recout,
 	struct dc *dc = pipe_ctx->stream->ctx->dc;
 	int dpp_offset, base_offset;
 
-	if (dc->debug.visual_confirm == VISUAL_CONFIRM_DISABLE)
+	if (dc->debug.visual_confirm == VISUAL_CONFIRM_DISABLE || !pipe_ctx->plane_res.dpp)
 		return;
 
 	dpp_offset = pipe_ctx->stream->timing.v_addressable / VISUAL_CONFIRM_DPP_OFFSET_DENO;
@@ -2384,6 +2384,9 @@ static struct audio *find_first_free_audio(
 		enum dce_version dc_version)
 {
 	int i, available_audio_count;
+
+	if (id == ENGINE_ID_UNKNOWN)
+		return NULL;
 
 	available_audio_count = pool->audio_count;
 
