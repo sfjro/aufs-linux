@@ -374,10 +374,9 @@ static int nvmem_sysfs_setup_compat(struct nvmem_device *nvmem,
 	if (!config->base_dev)
 		return -EINVAL;
 
-	if (config->type == NVMEM_TYPE_FRAM)
-		bin_attr_nvmem_eeprom_compat.attr.name = "fram";
-
 	nvmem->eeprom = bin_attr_nvmem_eeprom_compat;
+	if (config->type == NVMEM_TYPE_FRAM)
+		nvmem->eeprom.attr.name = "fram";
 	nvmem->eeprom.attr.mode = nvmem_bin_attr_get_umode(nvmem);
 	nvmem->eeprom.size = nvmem->size;
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
@@ -796,6 +795,12 @@ static struct nvmem_layout *nvmem_layout_get(struct nvmem_device *nvmem)
 	if (!layout_np)
 		return NULL;
 
+	/* Fixed layouts don't have a matching driver */
+	if (of_device_is_compatible(layout_np, "fixed-layout")) {
+		of_node_put(layout_np);
+		return NULL;
+	}
+
 	/*
 	 * In case the nvmem device was built-in while the layout was built as a
 	 * module, we shall manually request the layout driver loading otherwise
@@ -997,9 +1002,11 @@ struct nvmem_device *nvmem_register(const struct nvmem_config *config)
 	if (rval)
 		goto err_remove_cells;
 
-	rval = nvmem_add_cells_from_legacy_of(nvmem);
-	if (rval)
-		goto err_remove_cells;
+	if (config->add_legacy_fixed_of_cells) {
+		rval = nvmem_add_cells_from_legacy_of(nvmem);
+		if (rval)
+			goto err_remove_cells;
+	}
 
 	rval = nvmem_add_cells_from_fixed_layout(nvmem);
 	if (rval)

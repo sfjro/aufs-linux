@@ -407,7 +407,8 @@ static int allocate_doorbell(struct qcm_process_device *qpd,
 
 	q->properties.doorbell_off = amdgpu_doorbell_index_on_bar(dev->adev,
 								  qpd->proc_doorbells,
-								  q->doorbell_id);
+								  q->doorbell_id,
+								  dev->kfd->device_info.doorbell_size);
 	return 0;
 }
 
@@ -1979,6 +1980,7 @@ static int unmap_queues_cpsch(struct device_queue_manager *dqm,
 		pr_err("HIQ MQD's queue_doorbell_id0 is not 0, Queue preemption time out\n");
 		while (halt_if_hws_hang)
 			schedule();
+		kfd_hws_hang(dqm);
 		return -ETIME;
 	}
 

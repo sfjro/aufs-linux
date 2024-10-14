@@ -250,7 +250,6 @@ struct io_ring_ctx {
 
 		struct io_submit_state	submit_state;
 
-		struct io_buffer_list	*io_bl;
 		struct xarray		io_bl_xa;
 
 		struct io_hash_table	cancel_table_locked;
@@ -327,6 +326,9 @@ struct io_ring_ctx {
 
 	struct list_head	io_buffers_cache;
 
+	/* deferred free list, protected by ->uring_lock */
+	struct hlist_head	io_buf_list;
+
 	/* Keep this last, we don't need it for the fast path */
 	struct wait_queue_head		poll_wq;
 	struct io_restriction		restrictions;
@@ -344,9 +346,6 @@ struct io_ring_ctx {
 
 	struct list_head		io_buffers_pages;
 
-	#if defined(CONFIG_UNIX)
-		struct socket		*ring_sock;
-	#endif
 	/* hashed buffered write serialization */
 	struct io_wq_hash		*hash_map;
 
