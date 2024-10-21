@@ -166,7 +166,7 @@ static inline long au_lcnt_read(au_lcnt_t *cnt, int do_rev)
 		AuDbg("%s = %ld\n", #val, l);	\
 } while (0)
 #else
-#define AuLCntZero(val)		do {} while (0)
+AuStubVoid(AuLCntZero, long val __maybe_unused);
 #endif
 
 #endif /* __KERNEL__ */
