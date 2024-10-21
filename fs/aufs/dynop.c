@@ -129,7 +129,7 @@ void au_dy_put(struct au_dykey *key)
 #define DyDbgInc(cnt)		do { cnt++; } while (0)
 #else
 #define DyDbgDeclare(cnt)	do {} while (0)
-#define DyDbgInc(cnt)		do {} while (0)
+AuStubVoid(DyDbgInc, unsigned int cnt __maybe_unused);
 #endif
 
 #define DySet(func, dst, src, h_op, h_sb) do {				\
