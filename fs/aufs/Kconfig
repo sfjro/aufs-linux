@@ -62,13 +62,15 @@ config AUFS_HNOTIFY
 	It will have a negative impact to the performance.
 	See detail in aufs.5.
 
+if AUFS_HNOTIFY
 choice
-	prompt "method" if AUFS_HNOTIFY
+	prompt "method"
 	default AUFS_HFSNOTIFY
 config AUFS_HFSNOTIFY
 	bool "fsnotify"
 	select FSNOTIFY
 endchoice
+endif
 
 config AUFS_EXPORT
 	bool "NFS-exportable aufs"
