@@ -9,7 +9,7 @@
 
 #include "aufs.h"
 
-#define DyPrSym(key)	AuDbgSym(key->dk_op.dy_hop)
+#define DyPrSym(key)	AuDbgSym((void*)(key->dk_op.dy_hop))
 
 /*
  * How large will these lists be?
