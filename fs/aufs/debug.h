@@ -36,7 +36,7 @@ static inline int au_debug_test(void)
 	return atomic_read(&aufs_debug) > 0;
 }
 #else
-#define AuDebugOn(a)		do {} while (0)
+AuStubVoid(AuDebugOn, bool expr __maybe_unused)
 AuStubVoid(au_debug_on, void)
 AuStubVoid(au_debug_off, void)
 AuStubInt0(au_debug_test, void)
