@@ -95,14 +95,14 @@ AuStubInt0(au_debug_test, void)
 /* ---------------------------------------------------------------------- */
 
 struct dentry;
+struct inode;
+struct au_nhash;
+struct au_vdir;
 #ifdef CONFIG_AUFS_DEBUG
 extern struct mutex au_dbg_mtx;
 extern char *au_plevel;
-struct au_nhash;
 void au_dpri_whlist(struct au_nhash *whlist);
-struct au_vdir;
 void au_dpri_vdir(struct au_vdir *vdir);
-struct inode;
 void au_dpri_inode(struct inode *inode);
 void au_dpri_dalias(struct inode *inode);
 void au_dpri_dentry(struct dentry *dentry);
