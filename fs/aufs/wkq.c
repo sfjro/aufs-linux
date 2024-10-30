@@ -218,8 +218,6 @@ static void wkq_func(struct work_struct *wk)
 /*
  * Since struct completion is large, try allocating it dynamically.
  */
-#define AuWkqCompDeclare(name)	struct completion *comp = NULL
-
 static int au_wkq_comp_alloc(struct au_wkinfo *wkinfo, struct completion **comp)
 {
 	*comp = kmalloc(sizeof(**comp), GFP_NOFS);
@@ -266,7 +264,7 @@ static void au_wkq_run(struct au_wkinfo *wkinfo)
 int au_wkq_do_wait(unsigned int flags, au_wkq_func_t func, void *args)
 {
 	int err;
-	AuWkqCompDeclare(comp);
+	struct completion *comp = NULL;
 	struct au_wkinfo wkinfo = {
 		.flags	= flags,
 		.func	= func,
