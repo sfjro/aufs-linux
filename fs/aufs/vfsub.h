@@ -44,6 +44,16 @@ enum {
 
 /* ---------------------------------------------------------------------- */
 
+static inline void au_set_nlink(struct inode *inode, unsigned int nlink)
+{
+	/*
+	 * stop setting the value equal to the current one, in order to stop
+	 * a useless warning from vfs:destroy_inode() about sb->s_remove_count.
+	 */
+	if (nlink != inode->i_nlink)
+		set_nlink(inode, nlink);
+}
+
 static inline void vfsub_drop_nlink(struct inode *inode)
 {
 	AuDebugOn(!inode->i_nlink);
