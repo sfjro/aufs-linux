@@ -1165,7 +1165,7 @@ static void au_refresh_iattr(struct inode *inode, struct kstat *st,
 		n += st->nlink;
 		smp_mb(); /* for i_nlink */
 		/* 0 can happen */
-		set_nlink(inode, n);
+		au_set_nlink(inode, n);
 	}
 
 	spin_lock(&inode->i_lock);
