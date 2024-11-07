@@ -56,7 +56,7 @@ void au_cpup_attr_nlink(struct inode *inode, int force)
 	 * todo: O_TMPFILE+linkat(AT_SYMLINK_FOLLOW) bypassing aufs may cause
 	 *	 the incorrect link count.
 	 */
-	set_nlink(inode, h_inode->i_nlink);
+	au_set_nlink(inode, h_inode->i_nlink);
 
 	/*
 	 * fewer nlink makes find(1) noisy, but larger nlink doesn't.
