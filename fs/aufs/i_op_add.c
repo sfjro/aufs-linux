@@ -491,8 +491,7 @@ int aufs_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
 		goto out_h_file;
 	}
 
-	if (!inode->i_nlink)
-		set_nlink(inode, 1);
+	au_init_nlink(inode, 1);
 	d_tmpfile(file, inode);
 	au_di(dentry)->di_tmpfile = 1;
 	get_file(h_file);
