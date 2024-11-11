@@ -53,6 +53,12 @@ static inline void au_set_nlink(struct inode *inode, unsigned int nlink)
 		set_nlink(inode, nlink);
 }
 
+static inline void au_init_nlink(struct inode *inode, unsigned int nlink)
+{
+	/* to ignore sb->s_remove_count, do not use set_nlink() */
+	inode->__i_nlink = nlink;
+}
+
 static inline void vfsub_drop_nlink(struct inode *inode)
 {
 	AuDebugOn(!inode->i_nlink);
