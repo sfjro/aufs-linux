@@ -778,7 +778,7 @@ int au_alloc_root(struct super_block *sb)
 	inode->i_op = aufs_iop + AuIop_DIR; /* with getattr by default */
 	inode->i_fop = &aufs_dir_fop;
 	inode->i_mode = S_IFDIR;
-	set_nlink(inode, 2);
+	au_init_nlink(inode, 2);
 	unlock_new_inode(inode);
 
 	root = d_make_root(inode);
