@@ -100,8 +100,7 @@ void au_cpup_attr_all(struct inode *inode, int force)
 
 	h_inode = au_h_iptr(inode, au_ibtop(inode));
 	au_cpup_attr_changeable(inode);
-	if (inode->i_nlink > 0)
-		au_cpup_attr_nlink(inode, force);
+	au_cpup_attr_nlink(inode, force);
 	inode->i_rdev = h_inode->i_rdev;
 	inode->i_blkbits = h_inode->i_blkbits;
 	au_cpup_igen(inode, h_inode);
