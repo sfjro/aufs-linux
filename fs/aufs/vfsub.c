@@ -387,7 +387,7 @@ static int au_test_nlink(struct inode *inode)
 	const unsigned int link_max = UINT_MAX >> 1; /* rough margin */
 
 	if (!au_test_fs_no_limit_nlink(inode->i_sb)
-	    || inode->i_nlink < link_max)
+	    || vfsub_inode_nlink(inode, AU_I_BRANCH) < link_max)
 		return 0;
 	return -EMLINK;
 }
