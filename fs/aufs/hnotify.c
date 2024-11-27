@@ -306,7 +306,7 @@ static int hn_job(struct hn_job_args *a)
 	    && a->inode
 	    && a->h_inode) {
 		inode_lock_shared_nested(a->h_inode, AuLsc_I_CHILD);
-		if (!a->h_inode->i_nlink
+		if (!vfsub_inode_nlink(a->h_inode, AU_I_BRANCH)
 		    && !(a->h_inode->i_state & I_LINKABLE))
 			hn_xino(a->inode, a->h_inode); /* ignore this error */
 		inode_unlock_shared(a->h_inode);
@@ -620,7 +620,7 @@ int au_hnotify(struct inode *h_dir, struct au_hnotify *hnotify, u32 mask,
 
 	/* NFS fires the event for silly-renamed one from kworker */
 	f = 0;
-	if (!dir->i_nlink
+	if (!vfsub_inode_nlink(dir, AU_I_AUFS)
 	    || (au_test_nfs(h_dir->i_sb) && (mask & FS_DELETE)))
 		f = AuWkq_NEST;
 	err = au_wkq_nowait(au_hn_bh, args, dir->i_sb, f);
