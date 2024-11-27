@@ -230,7 +230,7 @@ static int test_add(struct super_block *sb, struct au_opt_add *add, int remount)
 
 	inode = d_inode(add->path.dentry);
 	err = -ENOENT;
-	if (unlikely(!inode->i_nlink)) {
+	if (unlikely(!vfsub_inode_nlink(inode, AU_I_UNKNOWN))) {
 		pr_err("no existence %s\n", add->pathname);
 		goto out;
 	}
