@@ -56,7 +56,7 @@ void au_cpup_attr_nlink(struct inode *inode, int force)
 	 * todo: O_TMPFILE+linkat(AT_SYMLINK_FOLLOW) bypassing aufs may cause
 	 *	 the incorrect link count.
 	 */
-	au_set_nlink(inode, h_inode->i_nlink);
+	vfsub_set_nlink(inode, vfsub_inode_nlink(h_inode, AU_I_BRANCH));
 
 	/*
 	 * fewer nlink makes find(1) noisy, but larger nlink doesn't.
@@ -529,7 +529,7 @@ static int au_do_cpup_regular(struct au_cp_generic *cpg,
 			goto out;
 		}
 		h_src_attr->valid = 1;
-		if (!au_test_nfs(h_src_inode->i_sb)) {
+		if (!au_test_fs_unlock_for_open(h_src_inode->i_sb)) {
 			err = au_cp_regular(cpg);
 			inode_unlock_shared(h_src_inode);
 		} else {
@@ -703,7 +703,7 @@ int cpup_entry(struct au_cp_generic *cpg, struct dentry *dst_parent,
 	if (!au_opt_test(mnt_flags, UDBA_NONE)
 	    && !isdir
 	    && au_opt_test(mnt_flags, XINO)
-	    && (h_inode->i_nlink == 1
+	    && (vfsub_inode_nlink(h_inode, AU_I_BRANCH) == 1
 		|| (h_inode->i_state & I_LINKABLE))
 	    /* todo: unnecessary? */
 	    /* && d_inode(cpg->dentry)->i_nlink == 1 */
@@ -830,7 +830,7 @@ static int au_cpup_single(struct au_cp_generic *cpg, struct dentry *dst_parent)
 			goto out_parent;
 		}
 
-		if (dst_inode->i_nlink) {
+		if (vfsub_inode_nlink(dst_inode, AU_I_BRANCH)) {
 			const int do_dt = au_ftest_cpup(cpg->flags, DTIME);
 
 			h_src = au_plink_lkup(inode, cpg->bdst);
@@ -915,7 +915,7 @@ static int au_cpup_single(struct au_cp_generic *cpg, struct dentry *dst_parent)
 
 	src_inode = d_inode(h_src);
 	if (!isdir
-	    && (src_inode->i_nlink > 1
+	    && (vfsub_inode_nlink(src_inode, AU_I_BRANCH) > 1
 		|| src_inode->i_state & I_LINKABLE)
 	    && plink)
 		au_plink_append(inode, cpg->bdst, h_dst);
@@ -1281,7 +1281,7 @@ int au_sio_cpup_wh(struct au_cp_generic *cpg, struct file *file)
 	h_dir = au_igrab(au_h_iptr(dir, bdst));
 	h_tmpdir = h_dir;
 	pin_orig = NULL;
-	if (!h_dir->i_nlink) {
+	if (!vfsub_inode_nlink(h_dir, AU_I_BRANCH)) {
 		wbr = au_sbr(dentry->d_sb, bdst)->br_wbr;
 		h_orph = wbr->wbr_orph;
 
