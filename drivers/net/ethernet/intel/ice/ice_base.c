@@ -520,6 +520,25 @@ static int ice_setup_rx_ctx(struct ice_rx_ring *ring)
 }
 
 /**
+ * ice_get_frame_sz - calculate xdp_buff::frame_sz
+ * @rx_ring: the ring being configured
+ *
+ * Return frame size based on underlying PAGE_SIZE
+ */
+static unsigned int ice_get_frame_sz(struct ice_rx_ring *rx_ring)
+{
+	unsigned int frame_sz;
+
+#if (PAGE_SIZE >= 8192)
+	frame_sz = rx_ring->rx_buf_len;
+#else
+	frame_sz = ice_rx_pg_size(rx_ring) / 2;
+#endif
+
+	return frame_sz;
+}
+
+/**
  * ice_vsi_cfg_rxq - Configure an Rx queue
  * @ring: the ring being configured
  *
@@ -534,19 +553,27 @@ int ice_vsi_cfg_rxq(struct ice_rx_ring *ring)
 	ring->rx_buf_len = ring->vsi->rx_buf_len;
 
 	if (ring->vsi->type == ICE_VSI_PF) {
-		if (!xdp_rxq_info_is_reg(&ring->xdp_rxq))
-			/* coverity[check_return] */
-			__xdp_rxq_info_reg(&ring->xdp_rxq, ring->netdev,
-					   ring->q_index,
-					   ring->q_vector->napi.napi_id,
-					   ring->vsi->rx_buf_len);
+		if (!xdp_rxq_info_is_reg(&ring->xdp_rxq)) {
+			err = __xdp_rxq_info_reg(&ring->xdp_rxq, ring->netdev,
+						 ring->q_index,
+						 ring->q_vector->napi.napi_id,
+						 ring->rx_buf_len);
+			if (err)
+				return err;
+		}
 
 		ring->xsk_pool = ice_xsk_pool(ring);
 		if (ring->xsk_pool) {
-			xdp_rxq_info_unreg_mem_model(&ring->xdp_rxq);
+			xdp_rxq_info_unreg(&ring->xdp_rxq);
 
 			ring->rx_buf_len =
 				xsk_pool_get_rx_frame_size(ring->xsk_pool);
+			err = __xdp_rxq_info_reg(&ring->xdp_rxq, ring->netdev,
+						 ring->q_index,
+						 ring->q_vector->napi.napi_id,
+						 ring->rx_buf_len);
+			if (err)
+				return err;
 			err = xdp_rxq_info_reg_mem_model(&ring->xdp_rxq,
 							 MEM_TYPE_XSK_BUFF_POOL,
 							 NULL);
@@ -557,13 +584,14 @@ int ice_vsi_cfg_rxq(struct ice_rx_ring *ring)
 			dev_info(dev, "Registered XDP mem model MEM_TYPE_XSK_BUFF_POOL on Rx ring %d\n",
 				 ring->q_index);
 		} else {
-			if (!xdp_rxq_info_is_reg(&ring->xdp_rxq))
-				/* coverity[check_return] */
-				__xdp_rxq_info_reg(&ring->xdp_rxq,
-						   ring->netdev,
-						   ring->q_index,
-						   ring->q_vector->napi.napi_id,
-						   ring->vsi->rx_buf_len);
+			if (!xdp_rxq_info_is_reg(&ring->xdp_rxq)) {
+				err = __xdp_rxq_info_reg(&ring->xdp_rxq, ring->netdev,
+							 ring->q_index,
+							 ring->q_vector->napi.napi_id,
+							 ring->rx_buf_len);
+				if (err)
+					return err;
+			}
 
 			err = xdp_rxq_info_reg_mem_model(&ring->xdp_rxq,
 							 MEM_TYPE_PAGE_SHARED,
@@ -573,7 +601,7 @@ int ice_vsi_cfg_rxq(struct ice_rx_ring *ring)
 		}
 	}
 
-	xdp_init_buff(&ring->xdp, ice_rx_pg_size(ring) / 2, &ring->xdp_rxq);
+	xdp_init_buff(&ring->xdp, ice_get_frame_sz(ring), &ring->xdp_rxq);
 	ring->xdp.data = NULL;
 	err = ice_setup_rx_ctx(ring);
 	if (err) {

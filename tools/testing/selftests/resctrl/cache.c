@@ -40,7 +40,7 @@ static int perf_event_open_llc_miss(pid_t pid, int cpu_no)
 	fd_lm = perf_event_open(&pea_llc_miss, pid, cpu_no, -1,
 				PERF_FLAG_FD_CLOEXEC);
 	if (fd_lm == -1) {
-		perror("Error opening leader");
+		ksft_perror("Error opening leader");
 		ctrlc_handler(0, NULL, NULL);
 		return -1;
 	}
@@ -95,7 +95,7 @@ static int get_llc_perf(unsigned long *llc_perf_miss)
 
 	ret = read(fd_lm, &rf_cqm, sizeof(struct read_format));
 	if (ret == -1) {
-		perror("Could not get llc misses through perf");
+		ksft_perror("Could not get llc misses through perf");
 		return -1;
 	}
 
@@ -124,12 +124,12 @@ static int get_llc_occu_resctrl(unsigned long *llc_occupancy)
 
 	fp = fopen(llc_occup_path, "r");
 	if (!fp) {
-		perror("Failed to open results file");
+		ksft_perror("Failed to open results file");
 
 		return errno;
 	}
 	if (fscanf(fp, "%lu", llc_occupancy) <= 0) {
-		perror("Could not get llc occupancy");
+		ksft_perror("Could not get llc occupancy");
 		fclose(fp);
 
 		return -1;
@@ -159,7 +159,7 @@ static int print_results_cache(char *filename, int bm_pid,
 	} else {
 		fp = fopen(filename, "a");
 		if (!fp) {
-			perror("Cannot open results file");
+			ksft_perror("Cannot open results file");
 
 			return errno;
 		}
@@ -205,10 +205,11 @@ int measure_cache_vals(struct resctrl_val_param *param, int bm_pid)
  * cache_val:		execute benchmark and measure LLC occupancy resctrl
  * and perf cache miss for the benchmark
  * @param:		parameters passed to cache_val()
+ * @span:		buffer size for the benchmark
  *
  * Return:		0 on success. non-zero on failure.
  */
-int cat_val(struct resctrl_val_param *param)
+int cat_val(struct resctrl_val_param *param, size_t span)
 {
 	int memflush = 1, operation = 0, ret = 0;
 	char *resctrl_val = param->resctrl_val;
@@ -245,7 +246,7 @@ int cat_val(struct resctrl_val_param *param)
 		if (ret)
 			break;
 
-		if (run_fill_buf(param->span, memflush, operation, true)) {
+		if (run_fill_buf(span, memflush, operation, true)) {
 			fprintf(stderr, "Error-running fill buffer\n");
 			ret = -1;
 			goto pe_close;

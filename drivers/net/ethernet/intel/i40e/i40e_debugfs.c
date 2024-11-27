@@ -5,8 +5,9 @@
 
 #include <linux/fs.h>
 #include <linux/debugfs.h>
-
+#include <linux/if_bridge.h>
 #include "i40e.h"
+#include "i40e_virtchnl_pf.h"
 
 static struct dentry *i40e_dbg_root;
 
@@ -105,6 +106,7 @@ static char *i40e_filter_state_string[] = {
 	"ACTIVE",
 	"FAILED",
 	"REMOVE",
+	"NEW_SYNC",
 };
 
 /**

@@ -318,7 +318,7 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
 	if (mvm->mld_api_is_used && mvm->nvm_data->sku_cap_11be_enable &&
 	    !iwlwifi_mod_params.disable_11ax &&
 	    !iwlwifi_mod_params.disable_11be)
-		hw->wiphy->flags |= WIPHY_FLAG_SUPPORTS_MLO;
+		hw->wiphy->flags |= WIPHY_FLAG_DISABLE_WEXT;
 
 	/* With MLD FW API, it tracks timing by itself,
 	 * no need for any timing from the host
@@ -352,7 +352,9 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
 		ieee80211_hw_set(hw, HAS_RATE_CONTROL);
 	}
 
-	if (iwl_mvm_has_new_rx_api(mvm))
+	/* We want to use the mac80211's reorder buffer for 9000 */
+	if (iwl_mvm_has_new_rx_api(mvm) &&
+	    mvm->trans->trans_cfg->device_family > IWL_DEVICE_FAMILY_9000)
 		ieee80211_hw_set(hw, SUPPORTS_REORDERING_BUFFER);
 
 	if (fw_has_capa(&mvm->fw->ucode_capa,
@@ -598,7 +600,7 @@ int iwl_mvm_mac_setup_register(struct iwl_mvm *mvm)
 		hw->wiphy->features |= NL80211_FEATURE_WFA_TPC_IE_IN_PROBES;
 
 	if (iwl_fw_lookup_cmd_ver(mvm->fw, WOWLAN_KEK_KCK_MATERIAL,
-				  IWL_FW_CMD_VER_UNKNOWN) == 3)
+				  IWL_FW_CMD_VER_UNKNOWN) >= 3)
 		hw->wiphy->flags |= WIPHY_FLAG_SUPPORTS_EXT_KEK_KCK;
 
 	if (fw_has_api(&mvm->fw->ucode_capa,
@@ -764,20 +766,10 @@ void iwl_mvm_mac_tx(struct ieee80211_hw *hw,
 	if (ieee80211_is_mgmt(hdr->frame_control))
 		sta = NULL;
 
-	/* If there is no sta, and it's not offchannel - send through AP */
+	/* this shouldn't even happen: just drop */
 	if (!sta && info->control.vif->type == NL80211_IFTYPE_STATION &&
-	    !offchannel) {
-		struct iwl_mvm_vif *mvmvif =
-			iwl_mvm_vif_from_mac80211(info->control.vif);
-		u8 ap_sta_id = READ_ONCE(mvmvif->deflink.ap_sta_id);
-
-		if (ap_sta_id < mvm->fw->ucode_capa.num_stations) {
-			/* mac80211 holds rcu read lock */
-			sta = rcu_dereference(mvm->fw_id_to_mac_id[ap_sta_id]);
-			if (IS_ERR_OR_NULL(sta))
-				goto drop;
-		}
-	}
+	    !offchannel)
+		goto drop;
 
 	if (tmp_sta && !sta && link_id != IEEE80211_LINK_UNSPECIFIED &&
 	    !ieee80211_is_probe_resp(hdr->frame_control)) {
@@ -1033,6 +1025,7 @@ static void iwl_mvm_cleanup_iterator(void *data, u8 *mac,
 	spin_unlock_bh(&mvm->time_event_lock);
 
 	memset(&mvmvif->bf_data, 0, sizeof(mvmvif->bf_data));
+	mvmvif->ap_sta = NULL;
 
 	for_each_mvm_vif_valid_link(mvmvif, link_id) {
 		mvmvif->link[link_id]->ap_sta_id = IWL_MVM_INVALID_STA;
@@ -1047,6 +1040,39 @@ static void iwl_mvm_cleanup_iterator(void *data, u8 *mac,
 	if (probe_data)
 		kfree_rcu(probe_data, rcu_head);
 	RCU_INIT_POINTER(mvmvif->deflink.probe_resp_data, NULL);
+}
+
+static void iwl_mvm_cleanup_sta_iterator(void *data, struct ieee80211_sta *sta)
+{
+	struct iwl_mvm *mvm = data;
+	struct iwl_mvm_sta *mvm_sta;
+	struct ieee80211_vif *vif;
+	int link_id;
+
+	mvm_sta = iwl_mvm_sta_from_mac80211(sta);
+	vif = mvm_sta->vif;
+
+	if (!sta->valid_links)
+		return;
+
+	for (link_id = 0; link_id < ARRAY_SIZE((sta)->link); link_id++) {
+		struct iwl_mvm_link_sta *mvm_link_sta;
+
+		mvm_link_sta =
+			rcu_dereference_check(mvm_sta->link[link_id],
+					      lockdep_is_held(&mvm->mutex));
+		if (mvm_link_sta && !(vif->active_links & BIT(link_id))) {
+			/*
+			 * We have a link STA but the link is inactive in
+			 * mac80211. This will happen if we failed to
+			 * deactivate the link but mac80211 roll back the
+			 * deactivation of the link.
+			 * Delete the stale data to avoid issues later on.
+			 */
+			iwl_mvm_mld_free_sta_link(mvm, mvm_sta, mvm_link_sta,
+						  link_id, false);
+		}
+	}
 }
 
 static void iwl_mvm_restart_cleanup(struct iwl_mvm *mvm)
@@ -1070,6 +1096,10 @@ static void iwl_mvm_restart_cleanup(struct iwl_mvm *mvm)
 	 * gone down during the HW restart
 	 */
 	ieee80211_iterate_interfaces(mvm->hw, 0, iwl_mvm_cleanup_iterator, mvm);
+
+	/* cleanup stations as links may be gone after restart */
+	ieee80211_iterate_stations_atomic(mvm->hw,
+					  iwl_mvm_cleanup_sta_iterator, mvm);
 
 	mvm->p2p_device_vif = NULL;
 
@@ -1511,6 +1541,17 @@ static int iwl_mvm_alloc_bcast_mcast_sta(struct iwl_mvm *mvm,
 					IWL_STA_MULTICAST);
 }
 
+void iwl_mvm_mac_init_mvmvif(struct iwl_mvm *mvm, struct iwl_mvm_vif *mvmvif)
+{
+	lockdep_assert_held(&mvm->mutex);
+
+	if (test_bit(IWL_MVM_STATUS_IN_HW_RESTART, &mvm->status))
+		return;
+
+	INIT_DELAYED_WORK(&mvmvif->csa_work,
+			  iwl_mvm_channel_switch_disconnect_wk);
+}
+
 static int iwl_mvm_mac_add_interface(struct ieee80211_hw *hw,
 				     struct ieee80211_vif *vif)
 {
@@ -1519,6 +1560,8 @@ static int iwl_mvm_mac_add_interface(struct ieee80211_hw *hw,
 	int ret;
 
 	mutex_lock(&mvm->mutex);
+
+	iwl_mvm_mac_init_mvmvif(mvm, mvmvif);
 
 	mvmvif->mvm = mvm;
 
@@ -1589,36 +1632,10 @@ static int iwl_mvm_mac_add_interface(struct ieee80211_hw *hw,
 				     IEEE80211_VIF_SUPPORTS_CQM_RSSI;
 	}
 
-	/*
-	 * P2P_DEVICE interface does not have a channel context assigned to it,
-	 * so a dedicated PHY context is allocated to it and the corresponding
-	 * MAC context is bound to it at this stage.
-	 */
-	if (vif->type == NL80211_IFTYPE_P2P_DEVICE) {
-
-		mvmvif->deflink.phy_ctxt = iwl_mvm_get_free_phy_ctxt(mvm);
-		if (!mvmvif->deflink.phy_ctxt) {
-			ret = -ENOSPC;
-			goto out_free_bf;
-		}
-
-		iwl_mvm_phy_ctxt_ref(mvm, mvmvif->deflink.phy_ctxt);
-		ret = iwl_mvm_binding_add_vif(mvm, vif);
-		if (ret)
-			goto out_unref_phy;
-
-		ret = iwl_mvm_add_p2p_bcast_sta(mvm, vif);
-		if (ret)
-			goto out_unbind;
-
-		/* Save a pointer to p2p device vif, so it can later be used to
-		 * update the p2p device MAC when a GO is started/stopped */
+	if (vif->type == NL80211_IFTYPE_P2P_DEVICE)
 		mvm->p2p_device_vif = vif;
-	}
 
 	iwl_mvm_tcm_add_vif(mvm, vif);
-	INIT_DELAYED_WORK(&mvmvif->csa_work,
-			  iwl_mvm_channel_switch_disconnect_wk);
 
 	if (vif->type == NL80211_IFTYPE_MONITOR) {
 		mvm->monitor_on = true;
@@ -1643,11 +1660,6 @@ out:
 
 	goto out_unlock;
 
- out_unbind:
-	iwl_mvm_binding_remove_vif(mvm, vif);
- out_unref_phy:
-	iwl_mvm_phy_ctxt_unref(mvm, mvmvif->deflink.phy_ctxt);
- out_free_bf:
 	if (mvm->bf_allowed_vif == mvmvif) {
 		mvm->bf_allowed_vif = NULL;
 		vif->driver_flags &= ~(IEEE80211_VIF_BEACON_FILTER |
@@ -1665,6 +1677,8 @@ out:
 void iwl_mvm_prepare_mac_removal(struct iwl_mvm *mvm,
 				 struct ieee80211_vif *vif)
 {
+	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
+
 	if (vif->type == NL80211_IFTYPE_P2P_DEVICE) {
 		/*
 		 * Flush the ROC worker which will flush the OFFCHANNEL queue.
@@ -1673,6 +1687,8 @@ void iwl_mvm_prepare_mac_removal(struct iwl_mvm *mvm,
 		 */
 		flush_work(&mvm->roc_done_wk);
 	}
+
+	cancel_delayed_work_sync(&mvmvif->csa_work);
 }
 
 /* This function is doing the common part of removing the interface for
@@ -1744,12 +1760,17 @@ static void iwl_mvm_mac_remove_interface(struct ieee80211_hw *hw,
 	if (iwl_mvm_mac_remove_interface_common(hw, vif))
 		goto out;
 
+	/* Before the interface removal, mac80211 would cancel the ROC, and the
+	 * ROC worker would be scheduled if needed. The worker would be flushed
+	 * in iwl_mvm_prepare_mac_removal() and thus at this point there is no
+	 * binding etc. so nothing needs to be done here.
+	 */
 	if (vif->type == NL80211_IFTYPE_P2P_DEVICE) {
+		if (mvmvif->deflink.phy_ctxt) {
+			iwl_mvm_phy_ctxt_unref(mvm, mvmvif->deflink.phy_ctxt);
+			mvmvif->deflink.phy_ctxt = NULL;
+		}
 		mvm->p2p_device_vif = NULL;
-		iwl_mvm_rm_p2p_bcast_sta(mvm, vif);
-		iwl_mvm_binding_remove_vif(mvm, vif);
-		iwl_mvm_phy_ctxt_unref(mvm, mvmvif->deflink.phy_ctxt);
-		mvmvif->deflink.phy_ctxt = NULL;
 	}
 
 	iwl_mvm_mac_ctxt_remove(mvm, vif);
@@ -3690,6 +3711,9 @@ iwl_mvm_sta_state_notexist_to_none(struct iwl_mvm *mvm,
 					   NL80211_TDLS_SETUP);
 	}
 
+	if (ret)
+		return ret;
+
 	for_each_sta_active_link(vif, sta, link_sta, i)
 		link_sta->agg.max_rc_amsdu_len = 1;
 
@@ -3697,6 +3721,19 @@ iwl_mvm_sta_state_notexist_to_none(struct iwl_mvm *mvm,
 
 	if (vif->type == NL80211_IFTYPE_STATION && !sta->tdls)
 		mvmvif->ap_sta = sta;
+
+	/*
+	 * Initialize the rates here already - this really tells
+	 * the firmware only what the supported legacy rates are
+	 * (may be) since it's initialized already from what the
+	 * AP advertised in the beacon/probe response. This will
+	 * allow the firmware to send auth/assoc frames with one
+	 * of the supported rates already, rather than having to
+	 * use a mandatory rate.
+	 * If we're the AP, we'll just assume mandatory rates at
+	 * this point, but we know nothing about the STA anyway.
+	 */
+	iwl_mvm_rs_rate_init_all_links(mvm, vif, sta);
 
 	return 0;
 }
@@ -3789,6 +3826,16 @@ iwl_mvm_sta_state_assoc_to_authorized(struct iwl_mvm *mvm,
 
 	mvm_sta->authorized = true;
 
+	/* MFP is set by default before the station is authorized.
+	 * Clear it here in case it's not used.
+	 */
+	if (!sta->mfp) {
+		int ret = callbacks->update_sta(mvm, vif, sta);
+
+		if (ret)
+			return ret;
+	}
+
 	iwl_mvm_rs_rate_init_all_links(mvm, vif, sta);
 
 	return 0;
@@ -3878,7 +3925,11 @@ int iwl_mvm_mac_sta_state_common(struct ieee80211_hw *hw,
 
 	mutex_lock(&mvm->mutex);
 
-	/* this would be a mac80211 bug ... but don't crash */
+	/* this would be a mac80211 bug ... but don't crash, unless we had a
+	 * firmware crash while we were activating a link, in which case it is
+	 * legit to have phy_ctxt = NULL. Don't bother not to WARN if we are in
+	 * recovery flow since we spit tons of error messages anyway.
+	 */
 	for_each_sta_active_link(vif, sta, link_sta, link_id) {
 		if (WARN_ON_ONCE(!mvmvif->link[link_id]->phy_ctxt)) {
 			mutex_unlock(&mvm->mutex);
@@ -4531,30 +4582,20 @@ static int iwl_mvm_add_aux_sta_for_hs20(struct iwl_mvm *mvm, u32 lmac_id)
 	return ret;
 }
 
-static int iwl_mvm_roc_switch_binding(struct iwl_mvm *mvm,
-				      struct ieee80211_vif *vif,
-				      struct iwl_mvm_phy_ctxt *new_phy_ctxt)
+static int iwl_mvm_roc_link(struct iwl_mvm *mvm, struct ieee80211_vif *vif)
 {
-	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
-	int ret = 0;
+	int ret;
 
 	lockdep_assert_held(&mvm->mutex);
 
-	/* Unbind the P2P_DEVICE from the current PHY context,
-	 * and if the PHY context is not used remove it.
-	 */
-	ret = iwl_mvm_binding_remove_vif(mvm, vif);
-	if (WARN(ret, "Failed unbinding P2P_DEVICE\n"))
+	ret = iwl_mvm_binding_add_vif(mvm, vif);
+	if (WARN(ret, "Failed binding P2P_DEVICE\n"))
 		return ret;
 
-	iwl_mvm_phy_ctxt_unref(mvm, mvmvif->deflink.phy_ctxt);
-
-	/* Bind the P2P_DEVICE to the current PHY Context */
-	mvmvif->deflink.phy_ctxt = new_phy_ctxt;
-
-	ret = iwl_mvm_binding_add_vif(mvm, vif);
-	WARN(ret, "Failed binding P2P_DEVICE\n");
-	return ret;
+	/* The station and queue allocation must be done only after the binding
+	 * is done, as otherwise the FW might incorrectly configure its state.
+	 */
+	return iwl_mvm_add_p2p_bcast_sta(mvm, vif);
 }
 
 static int iwl_mvm_roc(struct ieee80211_hw *hw,
@@ -4565,7 +4606,7 @@ static int iwl_mvm_roc(struct ieee80211_hw *hw,
 {
 	static const struct iwl_mvm_roc_ops ops = {
 		.add_aux_sta_for_hs20 = iwl_mvm_add_aux_sta_for_hs20,
-		.switch_phy_ctxt = iwl_mvm_roc_switch_binding,
+		.link = iwl_mvm_roc_link,
 	};
 
 	return iwl_mvm_roc_common(hw, vif, channel, duration, type, &ops);
@@ -4581,7 +4622,6 @@ int iwl_mvm_roc_common(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	struct iwl_mvm_vif *mvmvif = iwl_mvm_vif_from_mac80211(vif);
 	struct cfg80211_chan_def chandef;
 	struct iwl_mvm_phy_ctxt *phy_ctxt;
-	bool band_change_removal;
 	int ret, i;
 	u32 lmac_id;
 
@@ -4610,82 +4650,61 @@ int iwl_mvm_roc_common(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		/* handle below */
 		break;
 	default:
-		IWL_ERR(mvm, "vif isn't P2P_DEVICE: %d\n", vif->type);
+		IWL_ERR(mvm, "ROC: Invalid vif type=%u\n", vif->type);
 		ret = -EINVAL;
 		goto out_unlock;
 	}
 
+	/* Try using a PHY context that is already in use */
 	for (i = 0; i < NUM_PHY_CTX; i++) {
 		phy_ctxt = &mvm->phy_ctxts[i];
-		if (phy_ctxt->ref == 0 || mvmvif->deflink.phy_ctxt == phy_ctxt)
+		if (!phy_ctxt->ref || mvmvif->deflink.phy_ctxt == phy_ctxt)
 			continue;
 
-		if (phy_ctxt->ref && channel == phy_ctxt->channel) {
-			ret = ops->switch_phy_ctxt(mvm, vif, phy_ctxt);
-			if (ret)
-				goto out_unlock;
+		if (channel == phy_ctxt->channel) {
+			if (mvmvif->deflink.phy_ctxt)
+				iwl_mvm_phy_ctxt_unref(mvm,
+						       mvmvif->deflink.phy_ctxt);
 
+			mvmvif->deflink.phy_ctxt = phy_ctxt;
 			iwl_mvm_phy_ctxt_ref(mvm, mvmvif->deflink.phy_ctxt);
-			goto schedule_time_event;
+			goto link_and_start_p2p_roc;
 		}
 	}
 
-	/* Need to update the PHY context only if the ROC channel changed */
-	if (channel == mvmvif->deflink.phy_ctxt->channel)
-		goto schedule_time_event;
-
-	cfg80211_chandef_create(&chandef, channel, NL80211_CHAN_NO_HT);
-
-	/*
-	 * Check if the remain-on-channel is on a different band and that
-	 * requires context removal, see iwl_mvm_phy_ctxt_changed(). If
-	 * so, we'll need to release and then re-configure here, since we
-	 * must not remove a PHY context that's part of a binding.
+	/* If the currently used PHY context is configured with a matching
+	 * channel use it
 	 */
-	band_change_removal =
-		fw_has_capa(&mvm->fw->ucode_capa,
-			    IWL_UCODE_TLV_CAPA_BINDING_CDB_SUPPORT) &&
-		mvmvif->deflink.phy_ctxt->channel->band != chandef.chan->band;
-
-	if (mvmvif->deflink.phy_ctxt->ref == 1 && !band_change_removal) {
-		/*
-		 * Change the PHY context configuration as it is currently
-		 * referenced only by the P2P Device MAC (and we can modify it)
-		 */
-		ret = iwl_mvm_phy_ctxt_changed(mvm, mvmvif->deflink.phy_ctxt,
-					       &chandef, 1, 1);
-		if (ret)
-			goto out_unlock;
+	if (mvmvif->deflink.phy_ctxt) {
+		if (channel == mvmvif->deflink.phy_ctxt->channel)
+			goto link_and_start_p2p_roc;
 	} else {
-		/*
-		 * The PHY context is shared with other MACs (or we're trying to
-		 * switch bands), so remove the P2P Device from the binding,
-		 * allocate an new PHY context and create a new binding.
-		 */
 		phy_ctxt = iwl_mvm_get_free_phy_ctxt(mvm);
 		if (!phy_ctxt) {
 			ret = -ENOSPC;
 			goto out_unlock;
 		}
 
-		ret = iwl_mvm_phy_ctxt_changed(mvm, phy_ctxt, &chandef,
-					       1, 1);
-		if (ret) {
-			IWL_ERR(mvm, "Failed to change PHY context\n");
-			goto out_unlock;
-		}
-
-		ret = ops->switch_phy_ctxt(mvm, vif, phy_ctxt);
-		if (ret)
-			goto out_unlock;
-
+		mvmvif->deflink.phy_ctxt = phy_ctxt;
 		iwl_mvm_phy_ctxt_ref(mvm, mvmvif->deflink.phy_ctxt);
 	}
 
-schedule_time_event:
-	/* Schedule the time events */
-	ret = iwl_mvm_start_p2p_roc(mvm, vif, duration, type);
+	/* Configure the PHY context */
+	cfg80211_chandef_create(&chandef, channel, NL80211_CHAN_NO_HT);
 
+	ret = iwl_mvm_phy_ctxt_changed(mvm, phy_ctxt, &chandef,
+				       1, 1);
+	if (ret) {
+		IWL_ERR(mvm, "Failed to change PHY context\n");
+		goto out_unlock;
+	}
+
+link_and_start_p2p_roc:
+	ret = ops->link(mvm, vif);
+	if (ret)
+		goto out_unlock;
+
+	ret = iwl_mvm_start_p2p_roc(mvm, vif, duration, type);
 out_unlock:
 	mutex_unlock(&mvm->mutex);
 	IWL_DEBUG_MAC80211(mvm, "leave\n");
@@ -5560,6 +5579,10 @@ static void iwl_mvm_flush_no_vif(struct iwl_mvm *mvm, u32 queues, bool drop)
 	int i;
 
 	if (!iwl_mvm_has_new_tx_api(mvm)) {
+		/* we can't ask the firmware anything if it is dead */
+		if (test_bit(IWL_MVM_STATUS_HW_RESTART_REQUESTED,
+			     &mvm->status))
+			return;
 		if (drop) {
 			mutex_lock(&mvm->mutex);
 			iwl_mvm_flush_tx_path(mvm,
@@ -5629,7 +5652,8 @@ void iwl_mvm_mac_flush(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 		}
 
 		if (drop) {
-			if (iwl_mvm_flush_sta(mvm, mvmsta, false))
+			if (iwl_mvm_flush_sta(mvm, mvmsta->deflink.sta_id,
+					      mvmsta->tfd_queue_msk))
 				IWL_ERR(mvm, "flush request fail\n");
 		} else {
 			if (iwl_mvm_has_new_tx_api(mvm))
@@ -5643,30 +5667,32 @@ void iwl_mvm_mac_flush(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 
 	/* this can take a while, and we may need/want other operations
 	 * to succeed while doing this, so do it without the mutex held
+	 * If the firmware is dead, this can't work...
 	 */
-	if (!drop && !iwl_mvm_has_new_tx_api(mvm))
+	if (!drop && !iwl_mvm_has_new_tx_api(mvm) &&
+	    !test_bit(IWL_MVM_STATUS_HW_RESTART_REQUESTED,
+		      &mvm->status))
 		iwl_trans_wait_tx_queues_empty(mvm->trans, msk);
 }
 
 void iwl_mvm_mac_flush_sta(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			   struct ieee80211_sta *sta)
 {
+	struct iwl_mvm_sta *mvmsta = iwl_mvm_sta_from_mac80211(sta);
 	struct iwl_mvm *mvm = IWL_MAC80211_GET_MVM(hw);
-	int i;
+	struct iwl_mvm_link_sta *mvm_link_sta;
+	struct ieee80211_link_sta *link_sta;
+	int link_id;
 
 	mutex_lock(&mvm->mutex);
-	for (i = 0; i < mvm->fw->ucode_capa.num_stations; i++) {
-		struct iwl_mvm_sta *mvmsta;
-		struct ieee80211_sta *tmp;
-
-		tmp = rcu_dereference_protected(mvm->fw_id_to_mac_id[i],
-						lockdep_is_held(&mvm->mutex));
-		if (tmp != sta)
+	for_each_sta_active_link(vif, sta, link_sta, link_id) {
+		mvm_link_sta = rcu_dereference_protected(mvmsta->link[link_id],
+							 lockdep_is_held(&mvm->mutex));
+		if (!mvm_link_sta)
 			continue;
 
-		mvmsta = iwl_mvm_sta_from_mac80211(sta);
-
-		if (iwl_mvm_flush_sta(mvm, mvmsta, false))
+		if (iwl_mvm_flush_sta(mvm, mvm_link_sta->sta_id,
+				      mvmsta->tfd_queue_msk))
 			IWL_ERR(mvm, "flush request fail\n");
 	}
 	mutex_unlock(&mvm->mutex);
@@ -6045,7 +6071,7 @@ void iwl_mvm_sync_rx_queues_internal(struct iwl_mvm *mvm,
 		.len[0] = sizeof(cmd),
 		.data[1] = data,
 		.len[1] = size,
-		.flags = sync ? 0 : CMD_ASYNC,
+		.flags = CMD_SEND_IN_RFKILL | (sync ? 0 : CMD_ASYNC),
 	};
 	int ret;
 
@@ -6070,11 +6096,9 @@ void iwl_mvm_sync_rx_queues_internal(struct iwl_mvm *mvm,
 	if (sync) {
 		lockdep_assert_held(&mvm->mutex);
 		ret = wait_event_timeout(mvm->rx_sync_waitq,
-					 READ_ONCE(mvm->queue_sync_state) == 0 ||
-					 iwl_mvm_is_radio_killed(mvm),
+					 READ_ONCE(mvm->queue_sync_state) == 0,
 					 HZ);
-		WARN_ONCE(!ret && !iwl_mvm_is_radio_killed(mvm),
-			  "queue sync: failed to sync, state is 0x%lx\n",
+		WARN_ONCE(!ret, "queue sync: failed to sync, state is 0x%lx\n",
 			  mvm->queue_sync_state);
 	}
 
