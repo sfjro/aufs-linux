@@ -968,10 +968,10 @@ int au_whtmp_rmdir(struct inode *dir, aufs_bindex_t bindex,
 	inode_unlock(wh_inode);
 
 	if (!err) {
-		h_nlink = h_dir->i_nlink;
+		h_nlink = vfsub_inode_nlink(h_dir, AU_I_BRANCH);
 		err = vfsub_rmdir(h_dir, &wh_path);
 		/* some fs doesn't change the parent nlink in some cases */
-		h_nlink -= h_dir->i_nlink;
+		h_nlink -= vfsub_inode_nlink(h_dir, AU_I_BRANCH);
 	}
 
 	if (!err) {
