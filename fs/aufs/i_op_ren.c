@@ -638,7 +638,7 @@ static int au_may_ren(struct au_ren_args *a)
 		if (unlikely(d_is_negative(a->dst_h_dentry)))
 			goto out;
 		h_inode = d_inode(a->dst_h_dentry);
-		if (h_inode->i_nlink)
+		if (vfsub_inode_nlink(h_inode, AU_I_BRANCH))
 			err = au_may_del(a->dst_dentry, a->btgt,
 					 a->dst_h_parent, isdir);
 	}
@@ -1031,7 +1031,7 @@ int aufs_rename(struct mnt_idmap *idmap,
 		 * If it is a dir, VFS unhash it before this
 		 * function. It means we cannot rely upon d_unhashed().
 		 */
-		if (unlikely(!a->dst_inode->i_nlink))
+		if (unlikely(!vfsub_inode_nlink(a->dst_inode, AU_I_AUFS)))
 			goto out_unlock;
 		if (!au_ftest_ren(a->auren_flags, ISDIR_DST)) {
 			err = au_d_hashed_positive(a->dst_dentry);
