@@ -615,7 +615,7 @@ int au_pin_hdir_relock(struct au_pin *p)
 			continue;
 		if (d_is_positive(h_d[i])) {
 			h_i = d_inode(h_d[i]);
-			err = !h_i->i_nlink;
+			err = !vfsub_inode_nlink(h_i, AU_I_BRANCH);
 		}
 	}
 
@@ -1160,12 +1160,11 @@ static void au_refresh_iattr(struct inode *inode, struct kstat *st,
 
 	au_cpup_attr_nlink(inode, /*force*/0);
 	if (S_ISDIR(inode->i_mode)) {
-		n = inode->i_nlink;
+		n = vfsub_inode_nlink(inode, AU_I_AUFS);
 		n -= nlink;
 		n += st->nlink;
-		smp_mb(); /* for i_nlink */
 		/* 0 can happen */
-		au_set_nlink(inode, n);
+		vfsub_set_nlink(inode, n);
 	}
 
 	spin_lock(&inode->i_lock);
@@ -1290,7 +1289,8 @@ static int aufs_getattr(struct mnt_idmap *idmap, const struct path *path,
 	if (!err) {
 		if (positive)
 			au_refresh_iattr(inode, st,
-					 d_inode(h_path.dentry)->i_nlink);
+					 vfsub_inode_nlink(d_inode(h_path.dentry),
+							   AU_I_BRANCH));
 		goto out_fill; /* success */
 	}
 	AuTraceErr(err);

@@ -17,6 +17,7 @@
 #include <linux/posix_acl.h>
 #include <linux/xattr.h>
 #include "debug.h"
+#include "fstype.h"
 
 /* copied from linux/fs/internal.h */
 /* todo: BAD approach!! */
@@ -43,33 +44,55 @@ enum {
 
 /* ---------------------------------------------------------------------- */
 
-static inline void au_set_nlink(struct inode *inode, unsigned int nlink)
+unsigned int vfsub_inode_nlink_aufs(struct inode *inode);
+
+enum au_inode_type {
+	AU_I_AUFS,
+	AU_I_BRANCH,
+	AU_I_UNKNOWN
+};
+
+static inline unsigned int vfsub_inode_nlink(struct inode *inode,
+					     enum au_inode_type type)
 {
-	/*
-	 * stop setting the value equal to the current one, in order to stop
-	 * a useless warning from vfs:destroy_inode() about sb->s_remove_count.
-	 */
-	if (nlink != inode->i_nlink)
-		set_nlink(inode, nlink);
+	unsigned int nlink;
+
+	switch (type) {
+	case AU_I_AUFS:
+		nlink = vfsub_inode_nlink_aufs(inode);
+		break;
+	case AU_I_BRANCH: /* aufs cannot be a branch of another aufs mount */
+		AuDebugOn(au_test_aufs(inode->i_sb));
+		nlink = inode->i_nlink;
+		break;
+	case AU_I_UNKNOWN:
+		if (au_test_aufs(inode->i_sb))
+			nlink = vfsub_inode_nlink_aufs(inode);
+		else
+			nlink = inode->i_nlink;
+		break;
+	};
+
+	return nlink;
 }
 
-static inline void au_init_nlink(struct inode *inode, unsigned int nlink)
+void vfsub_inc_nlink(struct inode *inode);
+void vfsub_drop_nlink(struct inode *inode);
+void vfsub_clear_nlink(struct inode *inode);
+void vfsub_set_nlink(struct inode *inode, unsigned int nlink);
+
+static inline void vfsub_inode_nlink_init(struct inode *inode,
+					  unsigned int nlink)
 {
 	/* to ignore sb->s_remove_count, do not use set_nlink() */
 	inode->__i_nlink = nlink;
-}
-
-static inline void vfsub_drop_nlink(struct inode *inode)
-{
-	AuDebugOn(!inode->i_nlink);
-	drop_nlink(inode);
 }
 
 static inline void vfsub_dead_dir(struct inode *inode)
 {
 	AuDebugOn(!S_ISDIR(inode->i_mode));
 	inode->i_flags |= S_DEAD;
-	clear_nlink(inode);
+	vfsub_clear_nlink(inode);
 }
 
 static inline int vfsub_native_ro(struct inode *inode)
