@@ -371,7 +371,7 @@ struct inode *au_new_inode(struct dentry *dentry, int must_new)
 	h_dentry = au_h_dptr(dentry, btop);
 	h_inode = d_inode(h_dentry);
 	h_ino = h_inode->i_ino;
-	hlinked = !d_is_dir(h_dentry) && h_inode->i_nlink > 1;
+	hlinked = !d_is_dir(h_dentry) && vfsub_inode_nlink(h_inode, AU_I_BRANCH) > 1;
 
 new_ino:
 	/*
@@ -424,7 +424,8 @@ new_ino:
 		au_xino_write(sb, btop, h_ino, /*ino*/0);
 		/* ignore this error */
 		goto out_iput;
-	} else if (!must_new && !IS_DEADDIR(inode) && inode->i_nlink) {
+	} else if (!must_new && !IS_DEADDIR(inode)
+		   && vfsub_inode_nlink(inode, AU_I_AUFS)) {
 		/*
 		 * horrible race condition between lookup, readdir and copyup
 		 * (or something).
