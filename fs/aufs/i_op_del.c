@@ -92,7 +92,7 @@ int au_may_del(struct dentry *dentry, aufs_bindex_t bindex,
 		if (unlikely(d_is_negative(h_dentry)))
 			goto out;
 		h_inode = d_inode(h_dentry);
-		if (unlikely(!h_inode->i_nlink))
+		if (unlikely(!vfsub_inode_nlink(h_inode, AU_I_BRANCH)))
 			goto out;
 
 		h_mode = h_inode->i_mode;
