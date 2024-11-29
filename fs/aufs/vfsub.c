@@ -38,6 +38,52 @@ int vfsub_sync_filesystem(struct super_block *h_sb)
 
 /* ---------------------------------------------------------------------- */
 
+unsigned int vfsub_inode_nlink_aufs(struct inode *inode)
+{
+	unsigned int nlink;
+
+	au_nlink_lock(inode);
+	nlink = inode->i_nlink;
+	au_nlink_unlock(inode);
+
+	return nlink;
+}
+
+void vfsub_inc_nlink(struct inode *inode)
+{
+	au_nlink_lock(inode);
+	inc_nlink(inode);
+	au_nlink_unlock(inode);
+}
+
+void vfsub_drop_nlink(struct inode *inode)
+{
+	au_nlink_lock(inode);
+	AuDebugOn(!inode->i_nlink);
+	drop_nlink(inode);
+	au_nlink_unlock(inode);
+}
+
+void vfsub_clear_nlink(struct inode *inode)
+{
+	au_nlink_lock(inode);
+	AuDebugOn(!inode->i_nlink);
+	clear_nlink(inode);
+	au_nlink_unlock(inode);
+}
+
+void vfsub_set_nlink(struct inode *inode, unsigned int nlink)
+{
+	/*
+	 * stop setting the value equal to the current one, in order to stop
+	 * a useless warning from vfs:destroy_inode() about sb->s_remove_count.
+	 */
+	au_nlink_lock(inode);
+	if (nlink != inode->i_nlink)
+		set_nlink(inode, nlink);
+	au_nlink_unlock(inode);
+}
+
 int vfsub_update_h_iattr(struct path *h_path, int *did)
 {
 	int err;
@@ -344,7 +390,7 @@ static int au_test_nlink(struct inode *inode)
 	const unsigned int link_max = UINT_MAX >> 1; /* rough margin */
 
 	if (!au_test_fs_no_limit_nlink(inode->i_sb)
-	    || inode->i_nlink < link_max)
+	    || vfsub_inode_nlink(inode, AU_I_BRANCH) < link_max)
 		return 0;
 	return -EMLINK;
 }
