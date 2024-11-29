@@ -184,7 +184,7 @@ struct file *au_xino_create(struct super_block *sb, char *fpath, int silent,
 	h_dir = d_inode(h_parent);
 	inode = file_inode(file);
 	/* no delegation since it is just created */
-	if (inode->i_nlink)
+	if (vfsub_inode_nlink(inode, AU_I_BRANCH))
 		err = vfsub_unlink(h_dir, &file->f_path, /*delegated*/NULL,
 				   /*force*/0);
 	inode_unlock(h_dir);
@@ -1085,7 +1085,7 @@ static void au_xib_clear_bit(struct inode *inode)
 	struct super_block *sb;
 	struct au_sbinfo *sbinfo;
 
-	AuDebugOn(inode->i_nlink);
+	AuDebugOn(vfsub_inode_nlink(inode, AU_I_AUFS));
 
 	sb = inode->i_sb;
 	xib_calc_bit(inode->i_ino, &pindex, &bit);
@@ -1774,7 +1774,7 @@ void au_xino_delete_inode(struct inode *inode, const int unlinked)
 	for (; bindex <= bbot; bindex++, hi++) {
 		h_inode = hi->hi_inode;
 		if (!h_inode
-		    || (!unlinked && h_inode->i_nlink))
+		    || (!unlinked && vfsub_inode_nlink(h_inode, AU_I_BRANCH)))
 			continue;
 
 		/* inode may not be revalidated */
