@@ -110,7 +110,7 @@ int au_may_add(struct dentry *dentry, aufs_bindex_t bindex,
 		if (unlikely(d_is_negative(h_dentry)))
 			goto out;
 		h_inode = d_inode(h_dentry);
-		if (unlikely(!h_inode->i_nlink))
+		if (unlikely(!vfsub_inode_nlink(h_inode, AU_I_BRANCH)))
 			goto out;
 
 		h_mode = h_inode->i_mode;
@@ -491,7 +491,7 @@ int aufs_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
 		goto out_h_file;
 	}
 
-	au_init_nlink(inode, 1);
+	vfsub_inode_nlink_init(inode, 1);
 	d_tmpfile(file, inode);
 	au_di(dentry)->di_tmpfile = 1;
 	get_file(h_file);
@@ -596,7 +596,7 @@ static int au_cpup_or_link(struct dentry *src_dentry, struct dentry *dentry,
 	inode = d_inode(src_dentry);
 	if (au_ibtop(inode) <= a->bdst)
 		h_inode = au_h_iptr(inode, a->bdst);
-	if (!h_inode || !h_inode->i_nlink) {
+	if (!h_inode || !vfsub_inode_nlink(h_inode, AU_I_BRANCH)) {
 		/* copyup src_dentry as the name of dentry. */
 		bbot = au_dbbot(dentry);
 		if (bbot < a->bsrc)
@@ -809,7 +809,7 @@ int aufs_link(struct dentry *src_dentry, struct inode *dir,
 
 	au_dir_ts(dir, a->bdst);
 	inode_inc_iversion(dir);
-	inc_nlink(inode);
+	vfsub_inc_nlink(inode);
 	inode_set_ctime_to_ts(inode, inode_get_ctime(dir));
 	d_instantiate(dentry, au_igrab(inode));
 	if (d_unhashed(a->h_path.dentry))
@@ -914,7 +914,7 @@ int aufs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 
 	err = epilog(dir, bindex, wh_dentry, dentry);
 	if (!err) {
-		inc_nlink(dir);
+		vfsub_inc_nlink(dir);
 		goto out_unpin; /* success */
 	}
 
