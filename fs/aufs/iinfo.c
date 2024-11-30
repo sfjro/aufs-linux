@@ -134,7 +134,7 @@ void au_update_ibrange(struct inode *inode, int do_put_zero)
 
 			h_i = au_hinode(iinfo, bindex)->hi_inode;
 			if (h_i
-			    && !h_i->i_nlink
+			    && !vfsub_inode_nlink(h_i, AU_I_BRANCH)
 			    && !(h_i->i_state & I_LINKABLE))
 				au_set_h_iptr(inode, bindex, NULL, 0);
 		}
@@ -167,6 +167,7 @@ void au_icntnr_init_once(void *_c)
 	spin_lock_init(&iinfo->ii_generation.ig_spin);
 	au_rw_init(&iinfo->ii_rwsem);
 	inode_init_once(&c->vfs_inode);
+	spin_lock_init(&c->nlink_spin);
 }
 
 void au_hinode_init(struct au_hinode *hinode)
@@ -234,7 +235,7 @@ void au_iinfo_fin(struct inode *inode)
 	struct au_hinode *hi;
 	struct super_block *sb;
 	aufs_bindex_t bindex, bbot;
-	const unsigned char unlinked = !inode->i_nlink;
+	const unsigned char unlinked = !vfsub_inode_nlink(inode, AU_I_AUFS);
 
 	AuDebugOn(au_is_bad_inode(inode));
 
