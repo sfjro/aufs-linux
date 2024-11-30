@@ -13,32 +13,32 @@
 
 void au_add_nlink(struct inode *dir, struct inode *h_dir)
 {
-	unsigned int nlink;
+	unsigned int nlink, h_nlink;
 
 	AuDebugOn(!S_ISDIR(dir->i_mode) || !S_ISDIR(h_dir->i_mode));
 
-	nlink = dir->i_nlink;
-	nlink += h_dir->i_nlink - 2;
-	if (h_dir->i_nlink < 2)
+	nlink = vfsub_inode_nlink(dir, AU_I_AUFS);
+	h_nlink = vfsub_inode_nlink(h_dir, AU_I_BRANCH);
+	nlink += h_nlink - 2;
+	if (h_nlink < 2)
 		nlink += 2;
-	smp_mb(); /* for i_nlink */
 	/* 0 can happen in revaliding */
-	au_set_nlink(dir, nlink);
+	vfsub_set_nlink(dir, nlink);
 }
 
 void au_sub_nlink(struct inode *dir, struct inode *h_dir)
 {
-	unsigned int nlink;
+	unsigned int nlink, h_nlink;
 
 	AuDebugOn(!S_ISDIR(dir->i_mode) || !S_ISDIR(h_dir->i_mode));
 
-	nlink = dir->i_nlink;
-	nlink -= h_dir->i_nlink - 2;
-	if (h_dir->i_nlink < 2)
+	nlink = vfsub_inode_nlink(dir, AU_I_AUFS);
+	h_nlink = vfsub_inode_nlink(h_dir, AU_I_BRANCH);
+	nlink -= h_nlink - 2;
+	if (h_nlink < 2)
 		nlink -= 2;
-	smp_mb(); /* for i_nlink */
 	/* nlink == 0 means the branch-fs is broken */
-	au_set_nlink(dir, nlink);
+	vfsub_set_nlink(dir, nlink);
 }
 
 loff_t au_dir_size(struct file *file, struct dentry *dentry)
@@ -133,7 +133,7 @@ static void au_do_dir_ts(void *arg)
 	au_hn_inode_lock_nested(hdir, AuLsc_I_PARENT);
 	h_dir = au_h_iptr(dir, btop);
 	ts = inode_get_mtime(h_dir);
-	if (h_dir->i_nlink
+	if (vfsub_inode_nlink(h_dir, AU_I_BRANCH)
 	    && timespec64_compare(&ts, &dt.dt_mtime) < 0) {
 		dt.dt_h_path = h_path;
 		au_dtime_revert(&dt);
@@ -587,7 +587,7 @@ static int do_test_empty(struct dentry *dentry, struct test_empty_arg *arg)
 
 	err = 0;
 	if (!au_opt_test(au_mntflags(dentry->d_sb), UDBA_NONE)
-	    && !file_inode(h_file)->i_nlink)
+	    && !vfsub_inode_nlink(file_inode(h_file), AU_I_BRANCH))
 		goto out_put;
 
 	do {
