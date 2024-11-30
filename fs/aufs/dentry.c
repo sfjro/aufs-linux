@@ -493,10 +493,11 @@ static void au_do_hide(struct dentry *dentry)
 	if (d_really_is_positive(dentry)) {
 		inode = d_inode(dentry);
 		if (!d_is_dir(dentry)) {
-			if (inode->i_nlink && !d_unhashed(dentry))
-				drop_nlink(inode);
+			if (vfsub_inode_nlink(inode, AU_I_AUFS)
+			    && !d_unhashed(dentry))
+				vfsub_drop_nlink(inode);
 		} else {
-			clear_nlink(inode);
+			vfsub_clear_nlink(inode);
 			/* stop next lookup */
 			inode->i_flags |= S_DEAD;
 		}
@@ -876,7 +877,7 @@ static int h_d_revalidate(struct dentry *dentry, struct inode *inode,
 	 */
 	if (do_udba && inode) {
 		mode = (inode->i_mode & S_IFMT);
-		plus = (inode->i_nlink > 0);
+		plus = (vfsub_inode_nlink(inode, AU_I_AUFS) > 0);
 		ibs = au_ibtop(inode);
 		ibe = au_ibbot(inode);
 	}
@@ -944,7 +945,7 @@ static int h_d_revalidate(struct dentry *dentry, struct inode *inode,
 		h_cached_inode = h_inode;
 		if (h_inode && bindex != bwh) {
 			h_mode = (h_inode->i_mode & S_IFMT);
-			h_plus = (h_inode->i_nlink > 0);
+			h_plus = (vfsub_inode_nlink(h_inode, AU_I_BRANCH) > 0);
 		}
 		if (inode && ibs <= bindex && bindex <= ibe)
 			h_cached_inode = au_h_iptr(inode, bindex);
@@ -1100,7 +1101,7 @@ static int aufs_d_revalidate(struct dentry *dentry, unsigned int flags)
 	if (!(flags & (LOOKUP_OPEN | LOOKUP_EMPTY))
 	    && inode
 	    && !(inode->i_state && I_LINKABLE)
-	    && (IS_DEADDIR(inode) || !inode->i_nlink)) {
+	    && (IS_DEADDIR(inode) || !vfsub_inode_nlink(inode, AU_I_AUFS))) {
 		AuTraceErr(err);
 		goto out_inval;
 	}
