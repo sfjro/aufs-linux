@@ -1279,13 +1279,9 @@ static int aufs_getattr(struct mnt_idmap *idmap, const struct path *path,
 		goto out_fill; /* pretending success */
 
 	positive = d_is_positive(h_path.dentry);
-	if (positive) {
+	if (positive)
 		/* no vfsub version */
-		if (query & AT_GETATTR_NOSEC)
-			err = vfs_getattr_nosec(&h_path, st, request, query);
-		else
-			err = vfs_getattr(&h_path, st, request, query);
-	}
+		err = vfs_getattr_nosec(&h_path, st, request, query);
 	if (!err) {
 		if (positive)
 			au_refresh_iattr(inode, st,
