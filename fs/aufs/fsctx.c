@@ -82,7 +82,8 @@ static int au_fsctx_reconfigure(struct fs_context *fc)
 out:
 	inode_unlock(inode);
 	err = cvt_err(err);
-	AuTraceErr(err);
+	if (unlikely(err))
+		pr_err("remount err %d\n", err);
 
 	return err;
 }
