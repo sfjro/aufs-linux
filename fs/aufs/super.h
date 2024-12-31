@@ -183,7 +183,7 @@ struct au_sbinfo {
 #endif
 
 #ifdef CONFIG_AUFS_SBILIST
-	struct hlist_bl_node	si_list;
+	struct hlist_node	si_list;
 #endif
 
 	/* dirty, necessary for unmounting, sysfs and sysrq */
@@ -363,45 +363,71 @@ AuStub(int, au_busy_or_stale, return -EBUSY, void)
 
 #ifdef CONFIG_AUFS_SBILIST
 /* module.c */
-extern struct hlist_bl_head au_sbilist;
+extern struct au_rwsem au_sbilist_lock;
+extern struct hlist_head au_sbilist;
 
 static inline void au_sbilist_init(void)
 {
-	INIT_HLIST_BL_HEAD(&au_sbilist);
+	au_rw_init(&au_sbilist_lock);
+	INIT_HLIST_HEAD(&au_sbilist);
+}
+
+static inline void au_sbilist_fin(void)
+{
+	AuRwDestroy(&au_sbilist_lock);
 }
 
 static inline void au_sbilist_add(struct super_block *sb)
 {
-	au_hbl_add(&au_sbi(sb)->si_list, &au_sbilist);
+	au_rw_write_lock(&au_sbilist_lock);
+	hlist_add_head(&au_sbi(sb)->si_list, &au_sbilist);
+	au_rw_write_unlock(&au_sbilist_lock);
 }
 
 static inline void au_sbilist_del(struct super_block *sb)
 {
-	au_hbl_del(&au_sbi(sb)->si_list, &au_sbilist);
+	au_rw_write_lock(&au_sbilist_lock);
+	hlist_del(&au_sbi(sb)->si_list);
+	au_rw_write_unlock(&au_sbilist_lock);
 }
 
 #ifdef CONFIG_AUFS_MAGIC_SYSRQ
-static inline void au_sbilist_lock(void)
+static inline void au_sbilist_write_lock(void)
 {
-	hlist_bl_lock(&au_sbilist);
+	au_rw_write_lock(&au_sbilist_lock);
 }
 
-static inline void au_sbilist_unlock(void)
+static inline void au_sbilist_write_unlock(void)
 {
-	hlist_bl_unlock(&au_sbilist);
+	au_rw_write_unlock(&au_sbilist_lock);
+}
+
+static inline void au_sbilist_read_lock(void)
+{
+	au_rw_read_lock(&au_sbilist_lock);
+}
+
+static inline void au_sbilist_read_unlock(void)
+{
+	au_rw_read_unlock(&au_sbilist_lock);
 }
 #define AuGFP_SBILIST	GFP_ATOMIC
 #else
-AuStubVoid(au_sbilist_lock, void)
-AuStubVoid(au_sbilist_unlock, void)
+AuStubVoid(au_sbilist_write_lock, void)
+AuStubVoid(au_sbilist_write_unlock, void)
+AuStubVoid(au_sbilist_read_lock, void)
+AuStubVoid(au_sbilist_read_unlock, void)
 #define AuGFP_SBILIST	GFP_NOFS
 #endif /* CONFIG_AUFS_MAGIC_SYSRQ */
 #else
 AuStubVoid(au_sbilist_init, void)
+AuStubVoid(au_sbilist_fin, void)
 AuStubVoid(au_sbilist_add, struct super_block *sb)
 AuStubVoid(au_sbilist_del, struct super_block *sb)
-AuStubVoid(au_sbilist_lock, void)
-AuStubVoid(au_sbilist_unlock, void)
+AuStubVoid(au_sbilist_write_lock, void)
+AuStubVoid(au_sbilist_write_unlock, void)
+AuStubVoid(au_sbilist_read_lock, void)
+AuStubVoid(au_sbilist_read_unlock, void)
 #define AuGFP_SBILIST	GFP_NOFS
 #endif
 

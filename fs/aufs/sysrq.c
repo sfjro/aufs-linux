@@ -90,17 +90,25 @@ static char *aufs_sysrq_key = "a";
 module_param_named(sysrq, aufs_sysrq_key, charp, 0444);
 MODULE_PARM_DESC(sysrq, "MagicSysRq key for " AUFS_NAME);
 
-static void au_sysrq(u8 key __maybe_unused)
+static void au_sysrq_work_fn(struct work_struct *wk __maybe_unused)
 {
 	struct au_sbinfo *sbinfo;
-	struct hlist_bl_node *pos;
 
-	lockdep_off();
-	au_sbilist_lock();
-	hlist_bl_for_each_entry(sbinfo, pos, &au_sbilist, si_list)
+	au_sbilist_read_lock();
+	hlist_for_each_entry(sbinfo, &au_sbilist, si_list)
 		sysrq_sb(sbinfo->si_sb);
-	au_sbilist_unlock();
-	lockdep_on();
+	au_sbilist_read_unlock();
+
+	module_put(THIS_MODULE);
+}
+
+static DECLARE_WORK(au_sysrq_work, au_sysrq_work_fn);
+
+static void au_sysrq(u8 key __maybe_unused)
+{
+	/* au_wkq is too much here */
+	__module_get(THIS_MODULE);
+	schedule_work(&au_sysrq_work);
 }
 
 static struct sysrq_key_op au_sysrq_op = {
