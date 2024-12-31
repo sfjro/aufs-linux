@@ -120,7 +120,8 @@ int au_dir_roflags;
  * iterate_supers_type() doesn't protect us from
  * remounting (branch management)
  */
-struct hlist_bl_head au_sbilist;
+struct au_rwsem au_sbilist_lock;
+struct hlist_head au_sbilist;
 #endif
 
 /*
@@ -253,6 +254,7 @@ static void __exit aufs_exit(void)
 	dbgaufs_fin();
 	sysaufs_fin();
 	au_dy_fin();
+	au_sbilist_fin();
 }
 
 module_init(aufs_init);
