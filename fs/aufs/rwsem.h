@@ -18,7 +18,11 @@
 #define au_rwsem	rw_semaphore
 
 /* to debug easier, do not make them inlined functions */
+#ifndef CONFIG_PREEMPT_RT
 #define AuRwMustNoWaiters(rw)	AuDebugOn(rwsem_is_contended(rw))
+#else
+#define AuRwMustNoWaiters(rw)	do {} while(0)
+#endif
 
 #ifdef CONFIG_LOCKDEP
 /* rwsem_is_locked() is unusable */
