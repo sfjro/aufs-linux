@@ -1,5 +1,5 @@
 
-# Copyright (C) 2017-2022 Junjiro R. Okajima
+# Copyright (C) 2017-2025 Junjiro R. Okajima
 
 Special handling for renaming a directory (DIRREN)
 ----------------------------------------------------------------------
