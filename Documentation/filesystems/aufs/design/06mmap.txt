@@ -1,5 +1,5 @@
 
-# Copyright (C) 2005-2022 Junjiro R. Okajima
+# Copyright (C) 2005-2025 Junjiro R. Okajima
 
 mmap(2) -- File Memory Mapping
 ----------------------------------------------------------------------
