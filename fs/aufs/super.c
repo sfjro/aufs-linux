@@ -847,6 +847,7 @@ struct file_system_type aufs_fs_type = {
 	.name		= AUFS_FSTYPE,
 	/* a race between rename and others */
 	.fs_flags	= FS_RENAME_DOES_D_MOVE
+				| FS_MGTIME
 				/* untested */
 				/*| FS_ALLOW_IDMAP*/
 				,

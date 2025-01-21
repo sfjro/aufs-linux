@@ -132,7 +132,8 @@ void au_dtime_revert(struct au_dtime *dt)
 	attr.ia_atime = dt->dt_atime;
 	attr.ia_mtime = dt->dt_mtime;
 	attr.ia_valid = ATTR_FORCE | ATTR_MTIME | ATTR_MTIME_SET
-		| ATTR_ATIME | ATTR_ATIME_SET;
+		| ATTR_ATIME | ATTR_ATIME_SET
+		| ATTR_CTIME;
 
 	/* no delegation since this is a directory */
 	err = vfsub_notify_change(&dt->dt_h_path, &attr, /*delegated*/NULL);
@@ -168,7 +169,7 @@ int cpup_iattr(struct dentry *dst, aufs_bindex_t bindex, struct path *h_src,
 	h_idst = d_inode(h_path.dentry);
 	h_isrc = d_inode(h_src->dentry);
 	ia.ia_valid = ATTR_FORCE | ATTR_UID | ATTR_GID
-		| ATTR_ATIME | ATTR_MTIME
+		| ATTR_ATIME | ATTR_MTIME | ATTR_CTIME
 		| ATTR_ATIME_SET | ATTR_MTIME_SET;
 	if (h_src_attr && h_src_attr->valid) {
 		h_st = &h_src_attr->st;
