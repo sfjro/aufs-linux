@@ -630,7 +630,7 @@ static void au_pin_hdir_set_owner(struct au_pin *p, struct task_struct *task)
 	atomic_long_set(&p->hdir->hi_inode->i_rwsem.owner, (long)task);
 #else
 	p->hdir->hi_inode->i_rwsem.rwbase.rtmutex.owner = task;
-	smp_mb();
+	smp_mb(); /* advertise the owner */
 #endif
 }
 
