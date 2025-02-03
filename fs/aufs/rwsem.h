@@ -21,7 +21,7 @@
 #ifndef CONFIG_PREEMPT_RT
 #define AuRwMustNoWaiters(rw)	AuDebugOn(rwsem_is_contended(rw))
 #else
-#define AuRwMustNoWaiters(rw)	do {} while(0)
+AuStubVoid(AuRwMustNoWaiters, struct rw_semaphore *rw)
 #endif
 
 #ifdef CONFIG_LOCKDEP
