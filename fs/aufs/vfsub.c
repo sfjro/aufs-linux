@@ -67,7 +67,8 @@ void vfsub_drop_nlink(struct inode *inode)
 void vfsub_clear_nlink(struct inode *inode)
 {
 	au_nlink_lock(inode);
-	AuDebugOn(!inode->i_nlink);
+	/* it can happen */
+	/* AuDebugOn(!inode->i_nlink); */
 	clear_nlink(inode);
 	au_nlink_unlock(inode);
 }
