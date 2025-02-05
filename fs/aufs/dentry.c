@@ -817,46 +817,55 @@ out:
 	return err;
 }
 
-static int au_do_h_d_reval(struct dentry *h_dentry, unsigned int flags,
-			   struct dentry *dentry, aufs_bindex_t bindex)
+struct au_d_reval_args {
+	struct inode *dir;		/* NULL when ->d_weak_revalidate() */
+	const struct qstr *qname;	/* NULL when ->d_weak_revalidate() */
+	struct dentry *dentry;
+	unsigned int flags;
+};
+
+static int au_do_h_d_reval(struct au_d_reval_args *h_args)
 {
 	int err, valid;
+	struct dentry *h_dentry = h_args->dentry;
 
 	err = 0;
-	if (!(h_dentry->d_flags & DCACHE_OP_REVALIDATE))
-		goto out;
-
-	AuDbg("b%d\n", bindex);
-	/*
-	 * gave up supporting LOOKUP_CREATE/OPEN for lower fs,
-	 * due to whiteout and branch permission.
-	 */
-	flags &= ~(/*LOOKUP_PARENT |*/ LOOKUP_OPEN | LOOKUP_CREATE
-		   | LOOKUP_FOLLOW | LOOKUP_EXCL);
+	valid = 1;
 	/* it may return tri-state */
-	valid = h_dentry->d_op->d_revalidate(h_dentry, flags);
+	if (h_args->dir) {
+		if (h_dentry->d_flags & DCACHE_OP_REVALIDATE)
+			valid = h_dentry->d_op->d_revalidate(h_args->dir,
+							     h_args->qname,
+							     h_dentry,
+							     h_args->flags);
+	} else if (h_dentry->d_flags & DCACHE_OP_WEAK_REVALIDATE)
+		valid = h_dentry->d_op->d_weak_revalidate(h_dentry,
+							  h_args->flags);
 
 	if (unlikely(valid < 0))
 		err = valid;
 	else if (!valid)
 		err = -EINVAL;
 
-out:
 	AuTraceErr(err);
 	return err;
 }
 
 /* todo: remove this */
-static int h_d_revalidate(struct dentry *dentry, struct inode *inode,
-			  unsigned int flags, int do_udba, int dirren)
+static int h_d_revalidate(struct au_d_reval_args *args, struct inode *inode,
+			  int do_udba, int dirren)
 {
 	int err;
 	umode_t mode, h_mode;
 	aufs_bindex_t bindex, btail, btop, ibs, ibe, bwh;
 	unsigned char plus, unhashed, is_root, h_plus, h_nfs, tmpfile;
 	struct inode *h_inode, *h_cached_inode;
-	struct dentry *h_dentry;
-	struct qstr *name, *h_name;
+	struct dentry *h_parent, *dentry = args->dentry;
+	struct qstr *h_name, *qname = (struct qstr *)args->qname;
+	struct name_snapshot h_nameshot;
+	struct au_d_reval_args h_args = {
+		.qname	= &h_nameshot.name,
+	};
 
 	err = 0;
 	plus = 0;
@@ -865,7 +874,6 @@ static int h_d_revalidate(struct dentry *dentry, struct inode *inode,
 	ibe = -1;
 	unhashed = !!d_unhashed(dentry);
 	is_root = !!IS_ROOT(dentry);
-	name = &dentry->d_name;
 	tmpfile = au_di(dentry)->di_tmpfile;
 
 	/*
@@ -882,6 +890,16 @@ static int h_d_revalidate(struct dentry *dentry, struct inode *inode,
 		ibe = au_ibbot(inode);
 	}
 
+	h_args.dir = NULL;
+	h_parent = NULL;
+	h_args.flags = args->flags;
+	/*
+	 * gave up supporting LOOKUP_CREATE/OPEN for lower fs,
+	 * due to whiteout and branch permission.
+	 */
+	h_args.flags &= ~(/*LOOKUP_PARENT |*/ LOOKUP_OPEN | LOOKUP_CREATE
+			  | LOOKUP_FOLLOW | LOOKUP_EXCL);
+
 	btop = au_dbtop(dentry);
 	bwh = au_dbwh(dentry);
 	if (0 <= bwh && bwh < btop)
@@ -890,41 +908,52 @@ static int h_d_revalidate(struct dentry *dentry, struct inode *inode,
 	if (inode && S_ISDIR(inode->i_mode))
 		btail = au_dbtaildir(dentry);
 	for (bindex = btop; bindex <= btail; bindex++) {
-		h_dentry = au_h_dptr(dentry, bindex);
-		if (!h_dentry
+		h_args.dentry = au_h_dptr(dentry, bindex);
+		if (!h_args.dentry
 		    && (bindex == bwh && inode))
-			h_dentry = au_hi_wh(inode, bindex);
-		if (!h_dentry)
+			h_args.dentry = au_hi_wh(inode, bindex);
+		if (!h_args.dentry)
 			continue;
 
-		AuDbg("b%d, %pd\n", bindex, h_dentry);
-		h_nfs = !!au_test_nfs(h_dentry->d_sb);
-		spin_lock(&h_dentry->d_lock);
-		h_name = &h_dentry->d_name;
-		if (unlikely(do_udba
-			     && bindex != bwh
-			     && !is_root
-			     && ((!h_nfs
-				  && (unhashed != !!d_unhashed(h_dentry)
-				      || (!tmpfile && !dirren
-					  && !au_qstreq(name, h_name))
-					  ))
-				 || (h_nfs
-				     && !(flags & LOOKUP_OPEN)
-				     && (h_dentry->d_flags
-					 & DCACHE_NFSFS_RENAMED)))
-			    )) {
-			int h_unhashed;
+		AuDbg("b%d, %pd\n", bindex, h_args.dentry);
+		h_nfs = !!au_test_nfs(h_args.dentry->d_sb);
+		if (qname) {
+			spin_lock(&h_args.dentry->d_lock);
+			h_name = &h_args.dentry->d_name;
+			if (unlikely(do_udba
+				     && bindex != bwh
+				     && !is_root
+				     && ((!h_nfs
+					  && (unhashed != !!d_unhashed(h_args.dentry)
+					      || (!tmpfile && !dirren
+						  && !au_qstreq(qname, h_name))
+						  ))
+					 || (h_nfs
+					     && !(h_args.flags & LOOKUP_OPEN)
+					     && (h_args.dentry->d_flags
+						 & DCACHE_NFSFS_RENAMED)))
+				    )) {
+				int h_unhashed;
 
-			h_unhashed = d_unhashed(h_dentry);
-			spin_unlock(&h_dentry->d_lock);
-			AuDbg("unhash 0x%x 0x%x, %pd %pd\n",
-			      unhashed, h_unhashed, dentry, h_dentry);
-			goto err;
+				h_unhashed = d_unhashed(h_args.dentry);
+				spin_unlock(&h_args.dentry->d_lock);
+				AuDbg("unhash 0x%x 0x%x, %pd %pd\n",
+				      unhashed, h_unhashed, dentry,
+				      h_args.dentry);
+				goto err;
+			}
+			spin_unlock(&h_args.dentry->d_lock);
+
+			/* is it possible h_args.dentry is NULL or negative? */
+			h_parent = dget_parent(h_args.dentry);
+			h_args.dir = d_inode(h_parent);
 		}
-		spin_unlock(&h_dentry->d_lock);
 
-		err = au_do_h_d_reval(h_dentry, flags, dentry, bindex);
+		AuDbg("b%d\n", bindex);
+		take_dentry_name_snapshot(&h_nameshot, h_args.dentry);
+		err = au_do_h_d_reval(&h_args);
+		release_dentry_name_snapshot(&h_nameshot);
+		dput(h_parent);
 		if (unlikely(err))
 			/* do not goto err, to keep the errno */
 			break;
@@ -934,12 +963,12 @@ static int h_d_revalidate(struct dentry *dentry, struct inode *inode,
 			continue;
 
 		/* UDBA tests */
-		if (unlikely(!!inode != d_is_positive(h_dentry)))
+		if (unlikely(!!inode != d_is_positive(h_args.dentry)))
 			goto err;
 
 		h_inode = NULL;
-		if (d_is_positive(h_dentry))
-			h_inode = d_inode(h_dentry);
+		if (d_is_positive(h_args.dentry))
+			h_inode = d_inode(h_args.dentry);
 		h_plus = plus;
 		h_mode = mode;
 		h_cached_inode = h_inode;
@@ -954,10 +983,10 @@ static int h_d_revalidate(struct dentry *dentry, struct inode *inode,
 			if (unlikely(plus != h_plus && !tmpfile))
 				goto err;
 		} else {
-			if (unlikely(!(h_dentry->d_flags & DCACHE_NFSFS_RENAMED)
+			if (unlikely(!(h_args.dentry->d_flags & DCACHE_NFSFS_RENAMED)
 				     && !is_root
-				     && !IS_ROOT(h_dentry)
-				     && unhashed != d_unhashed(h_dentry)))
+				     && !IS_ROOT(h_args.dentry)
+				     && unhashed != d_unhashed(h_args.dentry)))
 				goto err;
 		}
 		if (unlikely(mode != h_mode
@@ -1043,16 +1072,17 @@ int au_reval_dpath(struct dentry *dentry, unsigned int sigen)
 /*
  * if valid returns 1, otherwise 0.
  */
-static int aufs_d_revalidate(struct dentry *dentry, unsigned int flags)
+static int au_do_d_reval(struct au_d_reval_args *args)
 {
 	int valid, err;
 	unsigned int sigen;
 	unsigned char do_udba, dirren;
 	struct super_block *sb;
 	struct inode *inode;
+	struct dentry *dentry = args->dentry;
 
 	/* todo: support rcu-walk? */
-	if (flags & LOOKUP_RCU)
+	if (args->flags & LOOKUP_RCU)
 		return -ECHILD;
 
 	valid = 0;
@@ -1098,7 +1128,7 @@ static int aufs_d_revalidate(struct dentry *dentry, unsigned int flags)
 	di_downgrade_lock(dentry, AuLock_IR);
 
 	err = -EINVAL;
-	if (!(flags & (LOOKUP_OPEN | LOOKUP_EMPTY))
+	if (!(args->flags & (LOOKUP_OPEN | LOOKUP_EMPTY))
 	    && inode
 	    && !(inode->i_state && I_LINKABLE)
 	    && (IS_DEADDIR(inode) || !vfsub_inode_nlink(inode, AU_I_AUFS))) {
@@ -1121,7 +1151,7 @@ static int aufs_d_revalidate(struct dentry *dentry, unsigned int flags)
 	}
 
 	dirren = !!au_opt_test(au_mntflags(sb), DIRREN);
-	err = h_d_revalidate(dentry, inode, flags, do_udba, dirren);
+	err = h_d_revalidate(args, inode, do_udba, dirren);
 	if (unlikely(!err && do_udba && au_dbtop(dentry) < 0)) {
 		err = -EIO;
 		AuDbg("both of real entry and whiteout found, %p, err %d\n",
@@ -1143,6 +1173,28 @@ out:
 	return valid;
 }
 
+static int aufs_d_revalidate(struct inode *dir, const struct qstr *qname,
+			     struct dentry *dentry, unsigned int flags)
+{
+	struct au_d_reval_args args = {
+		.dir	= dir,
+		.qname	= qname,
+		.dentry	= dentry,
+		.flags	= flags
+	};
+	return au_do_d_reval(&args);
+}
+
+static int aufs_d_weak_revalidate(struct dentry *dentry, unsigned int flags)
+{
+	struct au_d_reval_args args = {
+		/* dir and qname are NULL */
+		.dentry	= dentry,
+		.flags	= flags
+	};
+	return au_do_d_reval(&args);
+}
+
 static void aufs_d_release(struct dentry *dentry)
 {
 	if (au_di(dentry)) {
@@ -1153,7 +1205,7 @@ static void aufs_d_release(struct dentry *dentry)
 
 const struct dentry_operations aufs_dop = {
 	.d_revalidate		= aufs_d_revalidate,
-	.d_weak_revalidate	= aufs_d_revalidate,
+	.d_weak_revalidate	= aufs_d_weak_revalidate,
 	.d_release		= aufs_d_release
 };
 
