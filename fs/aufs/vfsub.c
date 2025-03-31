@@ -706,20 +706,18 @@ int vfsub_trunc(struct path *h_path, loff_t length, unsigned int attr,
 		goto out;
 	}
 
+	err = security_file_truncate(h_file);
+	if (err)
+		goto out;
+	err = fsnotify_truncate_perm(&h_file->f_path, length);
+	if (err)
+		goto out;
+	h_idmap = mnt_idmap(h_path->mnt);
 	h_inode = d_inode(h_path->dentry);
 	h_sb = h_inode->i_sb;
 	lockdep_off();
 	sb_start_write(h_sb);
-	lockdep_on();
-	err = security_file_truncate(h_file);
-	if (!err) {
-		h_idmap = mnt_idmap(h_path->mnt);
-		lockdep_off();
-		err = do_truncate(h_idmap, h_path->dentry, length, attr,
-				  h_file);
-		lockdep_on();
-	}
-	lockdep_off();
+	err = do_truncate(h_idmap, h_path->dentry, length, attr, h_file);
 	sb_end_write(h_sb);
 	lockdep_on();
 

@@ -311,9 +311,9 @@ static void dbgaufs_br_do_add(struct super_block *sb, aufs_bindex_t bindex,
 			      struct au_sbinfo *sbinfo)
 {
 	struct au_branch *br;
-	struct dentry *d;
 	/* "xi" bindex(5) "-" idx(2) NULL */
 	char name[sizeof(DbgaufsXi_PREFIX) + 8];
+	int err;
 
 	if (!idx)
 		snprintf(name, sizeof(name), DbgaufsXi_PREFIX "%d", bindex);
@@ -327,12 +327,11 @@ static void dbgaufs_br_do_add(struct super_block *sb, aufs_bindex_t bindex,
 		if (!au_qstreq(&br->br_dbgaufs->d_name, &qstr)) {
 			/* debugfs acquires the parent i_mutex */
 			lockdep_off();
-			d = debugfs_rename(parent, br->br_dbgaufs, parent,
-					   name);
+			err = debugfs_change_name(br->br_dbgaufs, name);
 			lockdep_on();
-			if (unlikely(!d))
-				pr_warn("failed renaming %pd/%s, ignored.\n",
-					parent, name);
+			if (unlikely(err))
+				pr_warn("failed renaming %pd/%s, err %d, ignored.\n",
+					parent, name, err);
 		}
 	} else {
 		lockdep_off();
