@@ -928,7 +928,7 @@ static int cxl_clear_event_record(struct cxl_memdev_state *mds,
 	for (cnt = 0; cnt < total; cnt++) {
 		payload->handles[i++] = get_pl->records[cnt].hdr.handle;
 		dev_dbg(mds->cxlds.dev, "Event log '%d': Clearing %u\n", log,
-			le16_to_cpu(payload->handles[i]));
+			le16_to_cpu(payload->handles[i - 1]));
 
 		if (i == max_handles) {
 			payload->nr_recs = i;
@@ -959,24 +959,22 @@ static void cxl_mem_get_records_log(struct cxl_memdev_state *mds,
 	struct cxl_memdev *cxlmd = mds->cxlds.cxlmd;
 	struct device *dev = mds->cxlds.dev;
 	struct cxl_get_event_payload *payload;
-	struct cxl_mbox_cmd mbox_cmd;
 	u8 log_type = type;
 	u16 nr_rec;
 
 	mutex_lock(&mds->event.log_lock);
 	payload = mds->event.buf;
 
-	mbox_cmd = (struct cxl_mbox_cmd) {
-		.opcode = CXL_MBOX_OP_GET_EVENT_RECORD,
-		.payload_in = &log_type,
-		.size_in = sizeof(log_type),
-		.payload_out = payload,
-		.size_out = mds->payload_size,
-		.min_out = struct_size(payload, records, 0),
-	};
-
 	do {
 		int rc, i;
+		struct cxl_mbox_cmd mbox_cmd = (struct cxl_mbox_cmd) {
+			.opcode = CXL_MBOX_OP_GET_EVENT_RECORD,
+			.payload_in = &log_type,
+			.size_in = sizeof(log_type),
+			.payload_out = payload,
+			.size_out = mds->payload_size,
+			.min_out = struct_size(payload, records, 0),
+		};
 
 		rc = cxl_internal_send_cmd(mds, &mbox_cmd);
 		if (rc) {
@@ -1125,20 +1123,7 @@ int cxl_dev_state_identify(struct cxl_memdev_state *mds)
 }
 EXPORT_SYMBOL_NS_GPL(cxl_dev_state_identify, CXL);
 
-/**
- * cxl_mem_sanitize() - Send a sanitization command to the device.
- * @mds: The device data for the operation
- * @cmd: The specific sanitization command opcode
- *
- * Return: 0 if the command was executed successfully, regardless of
- * whether or not the actual security operation is done in the background,
- * such as for the Sanitize case.
- * Error return values can be the result of the mailbox command, -EINVAL
- * when security requirements are not met or invalid contexts.
- *
- * See CXL 3.0 @8.2.9.8.5.1 Sanitize and @8.2.9.8.5.2 Secure Erase.
- */
-int cxl_mem_sanitize(struct cxl_memdev_state *mds, u16 cmd)
+static int __cxl_mem_sanitize(struct cxl_memdev_state *mds, u16 cmd)
 {
 	int rc;
 	u32 sec_out = 0;
@@ -1183,7 +1168,45 @@ int cxl_mem_sanitize(struct cxl_memdev_state *mds, u16 cmd)
 
 	return 0;
 }
-EXPORT_SYMBOL_NS_GPL(cxl_mem_sanitize, CXL);
+
+
+/**
+ * cxl_mem_sanitize() - Send a sanitization command to the device.
+ * @cxlmd: The device for the operation
+ * @cmd: The specific sanitization command opcode
+ *
+ * Return: 0 if the command was executed successfully, regardless of
+ * whether or not the actual security operation is done in the background,
+ * such as for the Sanitize case.
+ * Error return values can be the result of the mailbox command, -EINVAL
+ * when security requirements are not met or invalid contexts, or -EBUSY
+ * if the sanitize operation is already in flight.
+ *
+ * See CXL 3.0 @8.2.9.8.5.1 Sanitize and @8.2.9.8.5.2 Secure Erase.
+ */
+int cxl_mem_sanitize(struct cxl_memdev *cxlmd, u16 cmd)
+{
+	struct cxl_memdev_state *mds = to_cxl_memdev_state(cxlmd->cxlds);
+	struct cxl_port  *endpoint;
+	int rc;
+
+	/* synchronize with cxl_mem_probe() and decoder write operations */
+	device_lock(&cxlmd->dev);
+	endpoint = cxlmd->endpoint;
+	down_read(&cxl_region_rwsem);
+	/*
+	 * Require an endpoint to be safe otherwise the driver can not
+	 * be sure that the device is unmapped.
+	 */
+	if (endpoint && cxl_num_decoders_committed(endpoint) == 0)
+		rc = __cxl_mem_sanitize(mds, cmd);
+	else
+		rc = -EBUSY;
+	up_read(&cxl_region_rwsem);
+	device_unlock(&cxlmd->dev);
+
+	return rc;
+}
 
 static int add_dpa_res(struct device *dev, struct resource *parent,
 		       struct resource *res, resource_size_t start,
@@ -1285,7 +1308,6 @@ int cxl_mem_get_poison(struct cxl_memdev *cxlmd, u64 offset, u64 len,
 	struct cxl_memdev_state *mds = to_cxl_memdev_state(cxlmd->cxlds);
 	struct cxl_mbox_poison_out *po;
 	struct cxl_mbox_poison_in pi;
-	struct cxl_mbox_cmd mbox_cmd;
 	int nr_records = 0;
 	int rc;
 
@@ -1297,16 +1319,16 @@ int cxl_mem_get_poison(struct cxl_memdev *cxlmd, u64 offset, u64 len,
 	pi.offset = cpu_to_le64(offset);
 	pi.length = cpu_to_le64(len / CXL_POISON_LEN_MULT);
 
-	mbox_cmd = (struct cxl_mbox_cmd) {
-		.opcode = CXL_MBOX_OP_GET_POISON,
-		.size_in = sizeof(pi),
-		.payload_in = &pi,
-		.size_out = mds->payload_size,
-		.payload_out = po,
-		.min_out = struct_size(po, record, 0),
-	};
-
 	do {
+		struct cxl_mbox_cmd mbox_cmd = (struct cxl_mbox_cmd){
+			.opcode = CXL_MBOX_OP_GET_POISON,
+			.size_in = sizeof(pi),
+			.payload_in = &pi,
+			.size_out = mds->payload_size,
+			.payload_out = po,
+			.min_out = struct_size(po, record, 0),
+		};
+
 		rc = cxl_internal_send_cmd(mds, &mbox_cmd);
 		if (rc)
 			break;

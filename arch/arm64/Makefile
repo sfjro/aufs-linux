@@ -10,7 +10,7 @@
 #
 # Copyright (C) 1995-2001 by Russell King
 
-LDFLAGS_vmlinux	:=--no-undefined -X
+LDFLAGS_vmlinux	:=--no-undefined -X --pic-veneer
 
 ifeq ($(CONFIG_RELOCATABLE), y)
 # Pass --no-apply-dynamic-relocs to restore pre-binutils-2.27 behaviour
@@ -158,7 +158,7 @@ endif
 
 all:	$(notdir $(KBUILD_IMAGE))
 
-
+vmlinuz.efi: Image
 Image vmlinuz.efi: vmlinux
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
@@ -168,12 +168,6 @@ Image.%: Image
 install: KBUILD_IMAGE := $(boot)/Image
 install zinstall:
 	$(call cmd,install)
-
-PHONY += vdso_install
-vdso_install:
-	$(Q)$(MAKE) $(build)=arch/arm64/kernel/vdso $@
-	$(if $(CONFIG_COMPAT_VDSO), \
-		$(Q)$(MAKE) $(build)=arch/arm64/kernel/vdso32 $@)
 
 archprepare:
 	$(Q)$(MAKE) $(build)=arch/arm64/tools kapi
@@ -204,6 +198,9 @@ ifdef CONFIG_COMPAT_VDSO
 	include/generated/vdso32-offsets.h arch/arm64/kernel/vdso32/vdso.so
 endif
 endif
+
+vdso-install-y				+= arch/arm64/kernel/vdso/vdso.so.dbg
+vdso-install-$(CONFIG_COMPAT_VDSO)	+= arch/arm64/kernel/vdso32/vdso.so.dbg:vdso32.so
 
 include $(srctree)/scripts/Makefile.defconf
 

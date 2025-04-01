@@ -21,6 +21,7 @@
 #include <asm/hwprobe.h>
 #include <asm/patch.h>
 #include <asm/processor.h>
+#include <asm/sbi.h>
 #include <asm/vector.h>
 
 #include "copy-unaligned.h"
@@ -350,12 +351,17 @@ static void __init riscv_fill_hwcap_from_isa_string(unsigned long *isa2hwcap)
 	struct acpi_table_header *rhct;
 	acpi_status status;
 	unsigned int cpu;
+	u64 boot_vendorid;
+	u64 boot_archid;
 
 	if (!acpi_disabled) {
 		status = acpi_get_table(ACPI_SIG_RHCT, 0, &rhct);
 		if (ACPI_FAILURE(status))
 			return;
 	}
+
+	boot_vendorid = riscv_get_mvendorid();
+	boot_archid = riscv_get_marchid();
 
 	for_each_possible_cpu(cpu) {
 		struct riscv_isainfo *isainfo = &hart_isa[cpu];
@@ -394,6 +400,19 @@ static void __init riscv_fill_hwcap_from_isa_string(unsigned long *isa2hwcap)
 			set_bit(RISCV_ISA_EXT_ZIFENCEI, isainfo->isa);
 			set_bit(RISCV_ISA_EXT_ZICNTR, isainfo->isa);
 			set_bit(RISCV_ISA_EXT_ZIHPM, isainfo->isa);
+		}
+
+		/*
+		 * "V" in ISA strings is ambiguous in practice: it should mean
+		 * just the standard V-1.0 but vendors aren't well behaved.
+		 * Many vendors with T-Head CPU cores which implement the 0.7.1
+		 * version of the vector specification put "v" into their DTs.
+		 * CPU cores with the ratified spec will contain non-zero
+		 * marchid.
+		 */
+		if (acpi_disabled && boot_vendorid == THEAD_VENDOR_ID && boot_archid == 0x0) {
+			this_hwcap &= ~isa2hwcap[RISCV_ISA_EXT_v];
+			clear_bit(RISCV_ISA_EXT_v, isainfo->isa);
 		}
 
 		/*
@@ -568,6 +587,10 @@ void check_unaligned_access(int cpu)
 	void *src;
 	long speed = RISCV_HWPROBE_MISALIGNED_SLOW;
 
+	/* We are already set since the last check */
+	if (per_cpu(misaligned_access_speed, cpu) != RISCV_HWPROBE_MISALIGNED_UNKNOWN)
+		return;
+
 	page = alloc_pages(GFP_NOWAIT, get_order(MISALIGNED_BUFFER_SIZE));
 	if (!page) {
 		pr_warn("Can't alloc pages to measure memcpy performance");
@@ -652,6 +675,12 @@ static int check_unaligned_access_boot_cpu(void)
 }
 
 arch_initcall(check_unaligned_access_boot_cpu);
+
+void riscv_user_isa_enable(void)
+{
+	if (riscv_cpu_has_extension_unlikely(smp_processor_id(), RISCV_ISA_EXT_ZICBOZ))
+		csr_set(CSR_ENVCFG, ENVCFG_CBZE);
+}
 
 #ifdef CONFIG_RISCV_ALTERNATIVE
 /*

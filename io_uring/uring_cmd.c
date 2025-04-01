@@ -7,7 +7,7 @@
 #include <linux/nospec.h>
 
 #include <uapi/linux/io_uring.h>
-#include <uapi/asm-generic/ioctls.h>
+#include <asm/ioctls.h>
 
 #include "io_uring.h"
 #include "rsrc.h"
@@ -175,7 +175,7 @@ int io_uring_cmd_sock(struct io_uring_cmd *cmd, unsigned int issue_flags)
 	if (!prot || !prot->ioctl)
 		return -EOPNOTSUPP;
 
-	switch (cmd->sqe->cmd_op) {
+	switch (cmd->cmd_op) {
 	case SOCKET_URING_OP_SIOCINQ:
 		ret = prot->ioctl(sk, SIOCINQ, &arg);
 		if (ret)

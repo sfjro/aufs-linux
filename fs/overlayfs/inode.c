@@ -171,7 +171,7 @@ int ovl_getattr(struct mnt_idmap *idmap, const struct path *path,
 
 	type = ovl_path_real(dentry, &realpath);
 	old_cred = ovl_override_creds(dentry->d_sb);
-	err = vfs_getattr(&realpath, stat, request_mask, flags);
+	err = ovl_do_getattr(&realpath, stat, request_mask, flags);
 	if (err)
 		goto out;
 
@@ -196,8 +196,8 @@ int ovl_getattr(struct mnt_idmap *idmap, const struct path *path,
 					(!is_dir ? STATX_NLINK : 0);
 
 			ovl_path_lower(dentry, &realpath);
-			err = vfs_getattr(&realpath, &lowerstat,
-					  lowermask, flags);
+			err = ovl_do_getattr(&realpath, &lowerstat, lowermask,
+					     flags);
 			if (err)
 				goto out;
 
@@ -249,8 +249,8 @@ int ovl_getattr(struct mnt_idmap *idmap, const struct path *path,
 
 			ovl_path_lowerdata(dentry, &realpath);
 			if (realpath.dentry) {
-				err = vfs_getattr(&realpath, &lowerdatastat,
-						  lowermask, flags);
+				err = ovl_do_getattr(&realpath, &lowerdatastat,
+						     lowermask, flags);
 				if (err)
 					goto out;
 			} else {
@@ -741,8 +741,13 @@ static int ovl_security_fileattr(const struct path *realpath, struct fileattr *f
 	struct file *file;
 	unsigned int cmd;
 	int err;
+	unsigned int flags;
 
-	file = dentry_open(realpath, O_RDONLY, current_cred());
+	flags = O_RDONLY;
+	if (force_o_largefile())
+		flags |= O_LARGEFILE;
+
+	file = dentry_open(realpath, flags, current_cred());
 	if (IS_ERR(file))
 		return PTR_ERR(file);
 

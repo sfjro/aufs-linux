@@ -613,20 +613,20 @@ static int geni_i2c_gpi_xfer(struct geni_i2c_dev *gi2c, struct i2c_msg msgs[], i
 
 		peripheral.addr = msgs[i].addr;
 
-		if (msgs[i].flags & I2C_M_RD) {
-			ret =  geni_i2c_gpi(gi2c, &msgs[i], &config,
-					    &rx_addr, &rx_buf, I2C_READ, gi2c->rx_c);
-			if (ret)
-				goto err;
-		}
-
 		ret =  geni_i2c_gpi(gi2c, &msgs[i], &config,
 				    &tx_addr, &tx_buf, I2C_WRITE, gi2c->tx_c);
 		if (ret)
 			goto err;
 
-		if (msgs[i].flags & I2C_M_RD)
+		if (msgs[i].flags & I2C_M_RD) {
+			ret =  geni_i2c_gpi(gi2c, &msgs[i], &config,
+					    &rx_addr, &rx_buf, I2C_READ, gi2c->rx_c);
+			if (ret)
+				goto err;
+
 			dma_async_issue_pending(gi2c->rx_c);
+		}
+
 		dma_async_issue_pending(gi2c->tx_c);
 
 		timeout = wait_for_completion_timeout(&gi2c->done, XFER_TIMEOUT);
@@ -819,15 +819,13 @@ static int geni_i2c_probe(struct platform_device *pdev)
 	init_completion(&gi2c->done);
 	spin_lock_init(&gi2c->lock);
 	platform_set_drvdata(pdev, gi2c);
-	ret = devm_request_irq(dev, gi2c->irq, geni_i2c_irq, 0,
+	ret = devm_request_irq(dev, gi2c->irq, geni_i2c_irq, IRQF_NO_AUTOEN,
 			       dev_name(dev), gi2c);
 	if (ret) {
 		dev_err(dev, "Request_irq failed:%d: err:%d\n",
 			gi2c->irq, ret);
 		return ret;
 	}
-	/* Disable the interrupt so that the system can enter low-power mode */
-	disable_irq(gi2c->irq);
 	i2c_set_adapdata(&gi2c->adap, gi2c);
 	gi2c->adap.dev.parent = dev;
 	gi2c->adap.dev.of_node = dev->of_node;
@@ -857,6 +855,7 @@ static int geni_i2c_probe(struct platform_device *pdev)
 	ret = geni_se_resources_on(&gi2c->se);
 	if (ret) {
 		dev_err(dev, "Error turning on resources %d\n", ret);
+		clk_disable_unprepare(gi2c->core_clk);
 		return ret;
 	}
 	proto = geni_se_read_proto(&gi2c->se);
@@ -876,8 +875,11 @@ static int geni_i2c_probe(struct platform_device *pdev)
 		/* FIFO is disabled, so we can only use GPI DMA */
 		gi2c->gpi_mode = true;
 		ret = setup_gpi_dma(gi2c);
-		if (ret)
+		if (ret) {
+			geni_se_resources_off(&gi2c->se);
+			clk_disable_unprepare(gi2c->core_clk);
 			return dev_err_probe(dev, ret, "Failed to setup GPI DMA mode\n");
+		}
 
 		dev_dbg(dev, "Using GPI DMA mode for I2C\n");
 	} else {
@@ -890,6 +892,8 @@ static int geni_i2c_probe(struct platform_device *pdev)
 
 		if (!tx_depth) {
 			dev_err(dev, "Invalid TX FIFO depth\n");
+			geni_se_resources_off(&gi2c->se);
+			clk_disable_unprepare(gi2c->core_clk);
 			return -EINVAL;
 		}
 
@@ -981,12 +985,17 @@ static int __maybe_unused geni_i2c_runtime_resume(struct device *dev)
 		return ret;
 
 	ret = clk_prepare_enable(gi2c->core_clk);
-	if (ret)
+	if (ret) {
+		geni_icc_disable(&gi2c->se);
 		return ret;
+	}
 
 	ret = geni_se_resources_on(&gi2c->se);
-	if (ret)
+	if (ret) {
+		clk_disable_unprepare(gi2c->core_clk);
+		geni_icc_disable(&gi2c->se);
 		return ret;
+	}
 
 	enable_irq(gi2c->irq);
 	gi2c->suspended = 0;

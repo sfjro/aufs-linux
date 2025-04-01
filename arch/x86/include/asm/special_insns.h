@@ -205,7 +205,7 @@ static inline void clwb(volatile void *__p)
 #ifdef CONFIG_X86_USER_SHADOW_STACK
 static inline int write_user_shstk_64(u64 __user *addr, u64 val)
 {
-	asm_volatile_goto("1: wrussq %[val], (%[addr])\n"
+	asm goto("1: wrussq %[val], (%[addr])\n"
 			  _ASM_EXTABLE(1b, %l[fail])
 			  :: [addr] "r" (addr), [val] "r" (val)
 			  :: fail);
@@ -217,7 +217,7 @@ fail:
 
 #define nop() asm volatile ("nop")
 
-static inline void serialize(void)
+static __always_inline void serialize(void)
 {
 	/* Instruction opcode for SERIALIZE; supported in binutils >= 2.35. */
 	asm volatile(".byte 0xf, 0x1, 0xe8" ::: "memory");

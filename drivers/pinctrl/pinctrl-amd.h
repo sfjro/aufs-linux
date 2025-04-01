@@ -80,6 +80,10 @@
 #define FUNCTION_MASK		GENMASK(1, 0)
 #define FUNCTION_INVALID	GENMASK(7, 0)
 
+#define WAKE_SOURCE_SUSPEND  (BIT(WAKE_CNTRL_OFF_S0I3) | \
+			      BIT(WAKE_CNTRL_OFF_S3))
+#define WAKE_SOURCE_HIBERNATE BIT(WAKE_CNTRL_OFF_S4)
+
 struct amd_function {
 	const char *name;
 	const char * const groups[NSELECTS];

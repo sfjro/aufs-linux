@@ -70,6 +70,7 @@
 #ifndef __ASSEMBLY__
 
 #include <linux/jump_label.h>
+#include <asm/cpufeature.h>
 
 unsigned long riscv_get_elf_hwcap(void);
 
@@ -98,7 +99,7 @@ riscv_has_extension_likely(const unsigned long ext)
 			   "ext must be < RISCV_ISA_EXT_MAX");
 
 	if (IS_ENABLED(CONFIG_RISCV_ALTERNATIVE)) {
-		asm_volatile_goto(
+		asm goto(
 		ALTERNATIVE("j	%l[l_no]", "nop", 0, %[ext], 1)
 		:
 		: [ext] "i" (ext)
@@ -121,7 +122,7 @@ riscv_has_extension_unlikely(const unsigned long ext)
 			   "ext must be < RISCV_ISA_EXT_MAX");
 
 	if (IS_ENABLED(CONFIG_RISCV_ALTERNATIVE)) {
-		asm_volatile_goto(
+		asm goto(
 		ALTERNATIVE("nop", "j	%l[l_yes]", 0, %[ext], 1)
 		:
 		: [ext] "i" (ext)
@@ -137,6 +138,21 @@ l_yes:
 	return true;
 }
 
+static __always_inline bool riscv_cpu_has_extension_likely(int cpu, const unsigned long ext)
+{
+	if (IS_ENABLED(CONFIG_RISCV_ALTERNATIVE) && riscv_has_extension_likely(ext))
+		return true;
+
+	return __riscv_isa_extension_available(hart_isa[cpu].isa, ext);
+}
+
+static __always_inline bool riscv_cpu_has_extension_unlikely(int cpu, const unsigned long ext)
+{
+	if (IS_ENABLED(CONFIG_RISCV_ALTERNATIVE) && riscv_has_extension_unlikely(ext))
+		return true;
+
+	return __riscv_isa_extension_available(hart_isa[cpu].isa, ext);
+}
 #endif
 
 #endif /* _ASM_RISCV_HWCAP_H */

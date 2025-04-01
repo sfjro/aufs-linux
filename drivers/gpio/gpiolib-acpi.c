@@ -128,7 +128,24 @@ static bool acpi_gpio_deferred_req_irqs_done;
 
 static int acpi_gpiochip_find(struct gpio_chip *gc, void *data)
 {
-	return device_match_acpi_handle(&gc->gpiodev->dev, data);
+	/* First check the actual GPIO device */
+	if (device_match_acpi_handle(&gc->gpiodev->dev, data))
+		return true;
+
+	/*
+	 * When the ACPI device is artificially split to the banks of GPIOs,
+	 * where each of them is represented by a separate GPIO device,
+	 * the firmware node of the physical device may not be shared among
+	 * the banks as they may require different values for the same property,
+	 * e.g., number of GPIOs in a certain bank. In such case the ACPI handle
+	 * of a GPIO device is NULL and can not be used. Hence we have to check
+	 * the parent device to be sure that there is no match before bailing
+	 * out.
+	 */
+	if (gc->parent)
+		return device_match_acpi_handle(gc->parent, data);
+
+	return false;
 }
 
 /**
@@ -1653,6 +1670,54 @@ static const struct dmi_system_id gpiolib_acpi_quirks[] __initconst = {
 		},
 		.driver_data = &(struct acpi_gpiolib_dmi_quirk) {
 			.ignore_wake = "SYNA1202:00@16",
+		},
+	},
+	{
+		/*
+		 * On the Peaq C1010 2-in-1 INT33FC:00 pin 3 is connected to
+		 * a "dolby" button. At the ACPI level an _AEI event-handler
+		 * is connected which sets an ACPI variable to 1 on both
+		 * edges. This variable can be polled + cleared to 0 using
+		 * WMI. But since the variable is set on both edges the WMI
+		 * interface is pretty useless even when polling.
+		 * So instead the x86-android-tablets code instantiates
+		 * a gpio-keys platform device for it.
+		 * Ignore the _AEI handler for the pin, so that it is not busy.
+		 */
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "PEAQ"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "PEAQ PMM C1010 MD99187"),
+		},
+		.driver_data = &(struct acpi_gpiolib_dmi_quirk) {
+			.ignore_interrupt = "INT33FC:00@3",
+		},
+	},
+	{
+		/*
+		 * Spurious wakeups from TP_ATTN# pin
+		 * Found in BIOS 0.35
+		 * https://gitlab.freedesktop.org/drm/amd/-/issues/3073
+		 */
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "GPD"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "G1619-04"),
+		},
+		.driver_data = &(struct acpi_gpiolib_dmi_quirk) {
+			.ignore_wake = "PNP0C50:00@8",
+		},
+	},
+	{
+		/*
+		 * Spurious wakeups from GPIO 11
+		 * Found in BIOS 1.04
+		 * https://gitlab.freedesktop.org/drm/amd/-/issues/3954
+		 */
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+			DMI_MATCH(DMI_PRODUCT_FAMILY, "Acer Nitro V 14"),
+		},
+		.driver_data = &(struct acpi_gpiolib_dmi_quirk) {
+			.ignore_interrupt = "AMDI0030:00@11",
 		},
 	},
 	{} /* Terminating entry */

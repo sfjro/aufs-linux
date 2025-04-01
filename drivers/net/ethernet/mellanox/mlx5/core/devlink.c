@@ -46,6 +46,9 @@ mlx5_devlink_info_get(struct devlink *devlink, struct devlink_info_req *req,
 	u32 running_fw, stored_fw;
 	int err;
 
+	if (!mlx5_core_is_pf(dev))
+		return 0;
+
 	err = devlink_info_version_fixed_put(req, "fw.psid", dev->board_id);
 	if (err)
 		return err;
@@ -165,6 +168,12 @@ static int mlx5_devlink_reload_down(struct devlink *devlink, bool netns_change,
 
 	if (mlx5_core_is_mp_slave(dev)) {
 		NL_SET_ERR_MSG_MOD(extack, "reload is unsupported for multi port slave");
+		return -EOPNOTSUPP;
+	}
+
+	if (action == DEVLINK_RELOAD_ACTION_FW_ACTIVATE &&
+	    !dev->priv.fw_reset) {
+		NL_SET_ERR_MSG_MOD(extack, "FW activate is unsupported for this function");
 		return -EOPNOTSUPP;
 	}
 

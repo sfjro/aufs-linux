@@ -140,6 +140,7 @@ struct bnxt_re_ucontext {
 	void			*shpg;
 	spinlock_t		sh_lock;	/* protect shpg */
 	struct rdma_user_mmap_entry *shpage_mmap;
+	u64 cmask;
 };
 
 enum bnxt_re_mmap_flag {
@@ -165,6 +166,12 @@ static inline u16 bnxt_re_get_swqe_size(int nsge)
 static inline u16 bnxt_re_get_rwqe_size(int nsge)
 {
 	return sizeof(struct rq_wqe_hdr) + (nsge * sizeof(struct sq_sge));
+}
+
+static inline u32 bnxt_re_init_depth(u32 ent, struct bnxt_re_ucontext *uctx)
+{
+	return uctx ? (uctx->cmask & BNXT_RE_UCNTX_CMASK_POW2_DISABLED) ?
+		ent : roundup_pow_of_two(ent) : ent;
 }
 
 int bnxt_re_query_device(struct ib_device *ibdev,
@@ -238,6 +245,10 @@ void bnxt_re_dealloc_ucontext(struct ib_ucontext *context);
 int bnxt_re_mmap(struct ib_ucontext *context, struct vm_area_struct *vma);
 void bnxt_re_mmap_free(struct rdma_user_mmap_entry *rdma_entry);
 
+static inline u32 __to_ib_port_num(u16 port_id)
+{
+	return (u32)port_id + 1;
+}
 
 unsigned long bnxt_re_lock_cqs(struct bnxt_re_qp *qp);
 void bnxt_re_unlock_cqs(struct bnxt_re_qp *qp, unsigned long flags);

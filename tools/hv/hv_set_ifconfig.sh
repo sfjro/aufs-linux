@@ -53,7 +53,7 @@
 #                       or "manual" if no boot-time protocol should be used)
 #
 # address1=ipaddr1/plen
-# address=ipaddr2/plen
+# address2=ipaddr2/plen
 #
 # gateway=gateway1;gateway2
 #
@@ -61,7 +61,7 @@
 #
 # [ipv6]
 # address1=ipaddr1/plen
-# address2=ipaddr1/plen
+# address2=ipaddr2/plen
 #
 # gateway=gateway1;gateway2
 #
@@ -81,7 +81,7 @@ echo "ONBOOT=yes" >> $1
 
 cp $1 /etc/sysconfig/network-scripts/
 
-chmod 600 $2
+umask 0177
 interface=$(echo $2 | awk -F - '{ print $2 }')
 filename="${2##*/}"
 

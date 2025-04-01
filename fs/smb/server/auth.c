@@ -208,10 +208,12 @@ out:
 
 /**
  * ksmbd_auth_ntlmv2() - NTLMv2 authentication handler
- * @sess:	session of connection
+ * @conn:		connection
+ * @sess:		session of connection
  * @ntlmv2:		NTLMv2 challenge response
  * @blen:		NTLMv2 blob length
  * @domain_name:	domain name
+ * @cryptkey:		session crypto key
  *
  * Return:	0 on success, error number on error
  */
@@ -294,7 +296,8 @@ out:
  * ksmbd_decode_ntlmssp_auth_blob() - helper function to construct
  * authenticate blob
  * @authblob:	authenticate blob source pointer
- * @usr:	user details
+ * @blob_len:	length of the @authblob message
+ * @conn:	connection
  * @sess:	session of connection
  *
  * Return:	0 on success, error number on error
@@ -376,8 +379,8 @@ int ksmbd_decode_ntlmssp_auth_blob(struct authenticate_message *authblob,
  * ksmbd_decode_ntlmssp_neg_blob() - helper function to construct
  * negotiate blob
  * @negblob: negotiate blob source pointer
- * @rsp:     response header pointer to be updated
- * @sess:    session of connection
+ * @blob_len:	length of the @authblob message
+ * @conn:	connection
  *
  */
 int ksmbd_decode_ntlmssp_neg_blob(struct negotiate_message *negblob,
@@ -403,8 +406,7 @@ int ksmbd_decode_ntlmssp_neg_blob(struct negotiate_message *negblob,
  * ksmbd_build_ntlmssp_challenge_blob() - helper function to construct
  * challenge blob
  * @chgblob: challenge blob source pointer to initialize
- * @rsp:     response header pointer to be updated
- * @sess:    session of connection
+ * @conn:	connection
  *
  */
 unsigned int
@@ -1010,6 +1012,8 @@ static int ksmbd_get_encryption_key(struct ksmbd_work *work, __u64 ses_id,
 
 	ses_enc_key = enc ? sess->smb3encryptionkey :
 		sess->smb3decryptionkey;
+	if (enc)
+		ksmbd_user_session_get(sess);
 	memcpy(key, ses_enc_key, SMB3_ENC_DEC_KEY_SIZE);
 
 	return 0;

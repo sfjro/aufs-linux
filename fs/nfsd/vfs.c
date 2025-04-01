@@ -101,6 +101,7 @@ nfserrno (int errno)
 		{ nfserr_io, -EUCLEAN },
 		{ nfserr_perm, -ENOKEY },
 		{ nfserr_no_grace, -ENOGRACE},
+		{ nfserr_io, -EBADMSG },
 	};
 	int	i;
 
@@ -823,7 +824,7 @@ int nfsd_open_break_lease(struct inode *inode, int access)
  * and additional flags.
  * N.B. After this call fhp needs an fh_put
  */
-static __be32
+static int
 __nfsd_open(struct svc_rqst *rqstp, struct svc_fh *fhp, umode_t type,
 			int may_flags, struct file **filp)
 {
@@ -831,14 +832,12 @@ __nfsd_open(struct svc_rqst *rqstp, struct svc_fh *fhp, umode_t type,
 	struct inode	*inode;
 	struct file	*file;
 	int		flags = O_RDONLY|O_LARGEFILE;
-	__be32		err;
-	int		host_err = 0;
+	int		host_err = -EPERM;
 
 	path.mnt = fhp->fh_export->ex_path.mnt;
 	path.dentry = fhp->fh_dentry;
 	inode = d_inode(path.dentry);
 
-	err = nfserr_perm;
 	if (IS_APPEND(inode) && (may_flags & NFSD_MAY_WRITE))
 		goto out;
 
@@ -847,7 +846,7 @@ __nfsd_open(struct svc_rqst *rqstp, struct svc_fh *fhp, umode_t type,
 
 	host_err = nfsd_open_break_lease(inode, may_flags);
 	if (host_err) /* NOMEM or WOULDBLOCK */
-		goto out_nfserr;
+		goto out;
 
 	if (may_flags & NFSD_MAY_WRITE) {
 		if (may_flags & NFSD_MAY_READ)
@@ -859,13 +858,13 @@ __nfsd_open(struct svc_rqst *rqstp, struct svc_fh *fhp, umode_t type,
 	file = dentry_open(&path, flags, current_cred());
 	if (IS_ERR(file)) {
 		host_err = PTR_ERR(file);
-		goto out_nfserr;
+		goto out;
 	}
 
 	host_err = ima_file_check(file, may_flags);
 	if (host_err) {
 		fput(file);
-		goto out_nfserr;
+		goto out;
 	}
 
 	if (may_flags & NFSD_MAY_64BIT_COOKIE)
@@ -874,10 +873,8 @@ __nfsd_open(struct svc_rqst *rqstp, struct svc_fh *fhp, umode_t type,
 		file->f_mode |= FMODE_32BITHASH;
 
 	*filp = file;
-out_nfserr:
-	err = nfserrno(host_err);
 out:
-	return err;
+	return host_err;
 }
 
 __be32
@@ -885,9 +882,9 @@ nfsd_open(struct svc_rqst *rqstp, struct svc_fh *fhp, umode_t type,
 		int may_flags, struct file **filp)
 {
 	__be32 err;
+	int host_err;
 	bool retried = false;
 
-	validate_process_creds();
 	/*
 	 * If we get here, then the client has already done an "open",
 	 * and (hopefully) checked permission - so allow OWNER_OVERRIDE
@@ -904,14 +901,14 @@ nfsd_open(struct svc_rqst *rqstp, struct svc_fh *fhp, umode_t type,
 retry:
 	err = fh_verify(rqstp, fhp, type, may_flags);
 	if (!err) {
-		err = __nfsd_open(rqstp, fhp, type, may_flags, filp);
-		if (err == nfserr_stale && !retried) {
+		host_err = __nfsd_open(rqstp, fhp, type, may_flags, filp);
+		if (host_err == -EOPENSTALE && !retried) {
 			retried = true;
 			fh_put(fhp);
 			goto retry;
 		}
+		err = nfserrno(host_err);
 	}
-	validate_process_creds();
 	return err;
 }
 
@@ -922,18 +919,13 @@ retry:
  * @may_flags: internal permission flags
  * @filp: OUT: open "struct file *"
  *
- * Returns an nfsstat value in network byte order.
+ * Returns zero on success, or a negative errno value.
  */
-__be32
+int
 nfsd_open_verified(struct svc_rqst *rqstp, struct svc_fh *fhp, int may_flags,
 		   struct file **filp)
 {
-	__be32 err;
-
-	validate_process_creds();
-	err = __nfsd_open(rqstp, fhp, S_IFREG, may_flags, filp);
-	validate_process_creds();
-	return err;
+	return __nfsd_open(rqstp, fhp, S_IFREG, may_flags, filp);
 }
 
 /*
@@ -994,7 +986,9 @@ static __be32 nfsd_finish_read(struct svc_rqst *rqstp, struct svc_fh *fhp,
 			       unsigned long *count, u32 *eof, ssize_t host_err)
 {
 	if (host_err >= 0) {
-		nfsd_stats_io_read_add(fhp->fh_export, host_err);
+		struct nfsd_net *nn = net_generic(SVC_NET(rqstp), nfsd_net_id);
+
+		nfsd_stats_io_read_add(nn, fhp->fh_export, host_err);
 		*eof = nfsd_eof_on_read(file, offset, host_err, *count);
 		*count = host_err;
 		fsnotify_access(file);
@@ -1177,7 +1171,7 @@ nfsd_vfs_write(struct svc_rqst *rqstp, struct svc_fh *fhp, struct nfsd_file *nf,
 		goto out_nfserr;
 	}
 	*cnt = host_err;
-	nfsd_stats_io_write_add(exp, *cnt);
+	nfsd_stats_io_write_add(nn, exp, *cnt);
 	fsnotify_modify(file);
 	host_err = filemap_check_wb_err(file->f_mapping, since);
 	if (host_err < 0)

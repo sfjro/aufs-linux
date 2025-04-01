@@ -190,7 +190,7 @@ static int gve_alloc_stats_report(struct gve_priv *priv)
 	rx_stats_num = (GVE_RX_STATS_REPORT_NUM + NIC_RX_STATS_REPORT_NUM) *
 		       priv->rx_cfg.num_queues;
 	priv->stats_report_len = struct_size(priv->stats_report, stats,
-					     tx_stats_num + rx_stats_num);
+					     size_add(tx_stats_num, rx_stats_num));
 	priv->stats_report =
 		dma_alloc_coherent(&priv->pdev->dev, priv->stats_report_len,
 				   &priv->stats_report_bus, GFP_KERNEL);
@@ -254,9 +254,12 @@ static int gve_napi_poll(struct napi_struct *napi, int budget)
 	if (block->tx) {
 		if (block->tx->q_num < priv->tx_cfg.num_queues)
 			reschedule |= gve_tx_poll(block, budget);
-		else
+		else if (budget)
 			reschedule |= gve_xdp_poll(block, budget);
 	}
+
+	if (!budget)
+		return 0;
 
 	if (block->rx) {
 		work_done = gve_rx_poll(block, budget);
@@ -297,6 +300,9 @@ static int gve_napi_poll_dqo(struct napi_struct *napi, int budget)
 
 	if (block->tx)
 		reschedule |= gve_tx_poll_dqo(block, /*do_clean=*/true);
+
+	if (!budget)
+		return 0;
 
 	if (block->rx) {
 		work_done = gve_rx_poll_dqo(block, budget);
@@ -1522,8 +1528,8 @@ static int gve_xsk_pool_enable(struct net_device *dev,
 	if (err)
 		return err;
 
-	/* If XDP prog is not installed, return */
-	if (!priv->xdp_prog)
+	/* If XDP prog is not installed or interface is down, return. */
+	if (!priv->xdp_prog || !netif_running(dev))
 		return 0;
 
 	rx = &priv->rx[qid];
@@ -1568,21 +1574,16 @@ static int gve_xsk_pool_disable(struct net_device *dev,
 	if (qid >= priv->rx_cfg.num_queues)
 		return -EINVAL;
 
-	/* If XDP prog is not installed, unmap DMA and return */
-	if (!priv->xdp_prog)
+	/* If XDP prog is not installed or interface is down, unmap DMA and
+	 * return.
+	 */
+	if (!priv->xdp_prog || !netif_running(dev))
 		goto done;
-
-	tx_qid = gve_xdp_tx_queue_id(priv, qid);
-	if (!netif_running(dev)) {
-		priv->rx[qid].xsk_pool = NULL;
-		xdp_rxq_info_unreg(&priv->rx[qid].xsk_rxq);
-		priv->tx[tx_qid].xsk_pool = NULL;
-		goto done;
-	}
 
 	napi_rx = &priv->ntfy_blocks[priv->rx[qid].ntfy_id].napi;
 	napi_disable(napi_rx); /* make sure current rx poll is done */
 
+	tx_qid = gve_xdp_tx_queue_id(priv, qid);
 	napi_tx = &priv->ntfy_blocks[priv->tx[tx_qid].ntfy_id].napi;
 	napi_disable(napi_tx); /* make sure current tx poll is done */
 
@@ -1609,6 +1610,9 @@ static int gve_xsk_wakeup(struct net_device *dev, u32 queue_id, u32 flags)
 {
 	struct gve_priv *priv = netdev_priv(dev);
 	int tx_queue_id = gve_xdp_tx_queue_id(priv, queue_id);
+
+	if (!gve_get_napi_enabled(priv))
+		return -ENETDOWN;
 
 	if (queue_id >= priv->rx_cfg.num_queues || !priv->xdp_prog)
 		return -EINVAL;
@@ -1749,8 +1753,13 @@ static void gve_turndown(struct gve_priv *priv)
 	/* Stop tx queues */
 	netif_tx_disable(priv->dev);
 
+	xdp_features_clear_redirect_target(priv->dev);
+
 	gve_clear_napi_enabled(priv);
 	gve_clear_report_stats(priv);
+
+	/* Make sure that all traffic is finished processing. */
+	synchronize_net();
 }
 
 static void gve_turnup(struct gve_priv *priv)
@@ -1785,6 +1794,9 @@ static void gve_turnup(struct gve_priv *priv)
 						       priv->rx_coalesce_usecs);
 		}
 	}
+
+	if (priv->num_xdp_queues && gve_supports_xdp_xmit(priv))
+		xdp_features_set_redirect_target(priv->dev, false);
 
 	gve_set_napi_enabled(priv);
 }
@@ -2002,14 +2014,17 @@ static void gve_service_task(struct work_struct *work)
 
 static void gve_set_netdev_xdp_features(struct gve_priv *priv)
 {
+	xdp_features_t xdp_features;
+
 	if (priv->queue_format == GVE_GQI_QPL_FORMAT) {
-		priv->dev->xdp_features = NETDEV_XDP_ACT_BASIC;
-		priv->dev->xdp_features |= NETDEV_XDP_ACT_REDIRECT;
-		priv->dev->xdp_features |= NETDEV_XDP_ACT_NDO_XMIT;
-		priv->dev->xdp_features |= NETDEV_XDP_ACT_XSK_ZEROCOPY;
+		xdp_features = NETDEV_XDP_ACT_BASIC;
+		xdp_features |= NETDEV_XDP_ACT_REDIRECT;
+		xdp_features |= NETDEV_XDP_ACT_XSK_ZEROCOPY;
 	} else {
-		priv->dev->xdp_features = 0;
+		xdp_features = 0;
 	}
+
+	xdp_set_features_flag(priv->dev, xdp_features);
 }
 
 static int gve_init_priv(struct gve_priv *priv, bool skip_describe_device)

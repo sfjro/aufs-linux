@@ -1151,7 +1151,8 @@ config HID_TOPRE
 	tristate "Topre REALFORCE keyboards"
 	depends on HID
 	help
-	  Say Y for N-key rollover support on Topre REALFORCE R2 108/87 key keyboards.
+	  Say Y for N-key rollover support on Topre REALFORCE R2 108/87 key and
+          Topre REALFORCE R3S 87 key keyboards.
 
 config HID_THINGM
 	tristate "ThingM blink(1) USB RGB LED"
@@ -1299,6 +1300,15 @@ config HID_ALPS
 	Support for Alps I2C HID touchpads and StickPointer.
 	Say Y here if you have a Alps touchpads over i2c-hid or usbhid
 	and want support for its special functionalities.
+
+config HID_MCP2200
+	tristate "Microchip MCP2200 HID USB-to-GPIO bridge"
+	depends on USB_HID && GPIOLIB
+	help
+	  Provides GPIO functionality over USB-HID through MCP2200 device.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called hid-mcp2200.ko.
 
 config HID_MCP2221
 	tristate "Microchip MCP2221 HID USB-to-I2C/SMbus host support"

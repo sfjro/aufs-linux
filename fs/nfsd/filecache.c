@@ -219,6 +219,7 @@ nfsd_file_alloc(struct net *net, struct inode *inode, unsigned char need,
 		return NULL;
 
 	INIT_LIST_HEAD(&nf->nf_lru);
+	INIT_LIST_HEAD(&nf->nf_gc);
 	nf->nf_birthtime = ktime_get();
 	nf->nf_file = NULL;
 	nf->nf_cred = get_current_cred();
@@ -396,8 +397,8 @@ nfsd_file_dispose_list(struct list_head *dispose)
 	struct nfsd_file *nf;
 
 	while (!list_empty(dispose)) {
-		nf = list_first_entry(dispose, struct nfsd_file, nf_lru);
-		list_del_init(&nf->nf_lru);
+		nf = list_first_entry(dispose, struct nfsd_file, nf_gc);
+		list_del_init(&nf->nf_gc);
 		nfsd_file_free(nf);
 	}
 }
@@ -414,12 +415,12 @@ nfsd_file_dispose_list_delayed(struct list_head *dispose)
 {
 	while(!list_empty(dispose)) {
 		struct nfsd_file *nf = list_first_entry(dispose,
-						struct nfsd_file, nf_lru);
+						struct nfsd_file, nf_gc);
 		struct nfsd_net *nn = net_generic(nf->nf_net, nfsd_net_id);
 		struct nfsd_fcache_disposal *l = nn->fcache_disposal;
 
 		spin_lock(&l->lock);
-		list_move_tail(&nf->nf_lru, &l->freeme);
+		list_move_tail(&nf->nf_gc, &l->freeme);
 		spin_unlock(&l->lock);
 		queue_work(nfsd_filecache_wq, &l->work);
 	}
@@ -476,7 +477,8 @@ nfsd_file_lru_cb(struct list_head *item, struct list_lru_one *lru,
 
 	/* Refcount went to zero. Unhash it and queue it to the dispose list */
 	nfsd_file_unhash(nf);
-	list_lru_isolate_move(lru, &nf->nf_lru, head);
+	list_lru_isolate(lru, &nf->nf_lru);
+	list_add(&nf->nf_gc, head);
 	this_cpu_inc(nfsd_file_evictions);
 	trace_nfsd_file_gc_disposed(nf);
 	return LRU_REMOVED;
@@ -555,7 +557,7 @@ nfsd_file_cond_queue(struct nfsd_file *nf, struct list_head *dispose)
 
 	/* If refcount goes to 0, then put on the dispose list */
 	if (refcount_sub_and_test(decrement, &nf->nf_ref)) {
-		list_add(&nf->nf_lru, dispose);
+		list_add(&nf->nf_gc, dispose);
 		trace_nfsd_file_closing(nf);
 	}
 }
@@ -631,8 +633,8 @@ nfsd_file_close_inode_sync(struct inode *inode)
 
 	nfsd_file_queue_for_close(inode, &dispose);
 	while (!list_empty(&dispose)) {
-		nf = list_first_entry(&dispose, struct nfsd_file, nf_lru);
-		list_del_init(&nf->nf_lru);
+		nf = list_first_entry(&dispose, struct nfsd_file, nf_gc);
+		list_del_init(&nf->nf_gc);
 		nfsd_file_free(nf);
 	}
 	flush_delayed_fput();
@@ -718,7 +720,7 @@ nfsd_file_cache_init(void)
 
 	ret = rhltable_init(&nfsd_file_rhltable, &nfsd_file_rhash_params);
 	if (ret)
-		return ret;
+		goto out;
 
 	ret = -ENOMEM;
 	nfsd_filecache_wq = alloc_workqueue("nfsd_filecache", 0, 0);
@@ -770,6 +772,8 @@ nfsd_file_cache_init(void)
 
 	INIT_DELAYED_WORK(&nfsd_filecache_laundrette, nfsd_file_gc_worker);
 out:
+	if (ret)
+		clear_bit(NFSD_FILE_CACHE_UP, &nfsd_file_flags);
 	return ret;
 out_notifier:
 	lease_unregister_notifier(&nfsd_file_lease_notifier);
@@ -989,22 +993,21 @@ nfsd_file_do_acquire(struct svc_rqst *rqstp, struct svc_fh *fhp,
 	unsigned char need = may_flags & NFSD_FILE_MAY_MASK;
 	struct net *net = SVC_NET(rqstp);
 	struct nfsd_file *new, *nf;
-	const struct cred *cred;
+	bool stale_retry = true;
 	bool open_retry = true;
 	struct inode *inode;
 	__be32 status;
 	int ret;
 
+retry:
 	status = fh_verify(rqstp, fhp, S_IFREG,
 				may_flags|NFSD_MAY_OWNER_OVERRIDE);
 	if (status != nfs_ok)
 		return status;
 	inode = d_inode(fhp->fh_dentry);
-	cred = get_current_cred();
 
-retry:
 	rcu_read_lock();
-	nf = nfsd_file_lookup_locked(net, cred, inode, need, want_gc);
+	nf = nfsd_file_lookup_locked(net, current_cred(), inode, need, want_gc);
 	rcu_read_unlock();
 
 	if (nf) {
@@ -1026,7 +1029,7 @@ retry:
 
 	rcu_read_lock();
 	spin_lock(&inode->i_lock);
-	nf = nfsd_file_lookup_locked(net, cred, inode, need, want_gc);
+	nf = nfsd_file_lookup_locked(net, current_cred(), inode, need, want_gc);
 	if (unlikely(nf)) {
 		spin_unlock(&inode->i_lock);
 		rcu_read_unlock();
@@ -1041,8 +1044,6 @@ retry:
 	if (likely(ret == 0))
 		goto open_file;
 
-	if (ret == -EEXIST)
-		goto retry;
 	trace_nfsd_file_insert_err(rqstp, inode, may_flags, ret);
 	status = nfserr_jukebox;
 	goto construction_err;
@@ -1057,7 +1058,9 @@ wait_for_construction:
 			status = nfserr_jukebox;
 			goto construction_err;
 		}
+		nfsd_file_put(nf);
 		open_retry = false;
+		fh_put(fhp);
 		goto retry;
 	}
 	this_cpu_inc(nfsd_file_cache_hits);
@@ -1074,7 +1077,6 @@ out:
 		nfsd_file_check_write_error(nf);
 		*pnf = nf;
 	}
-	put_cred(cred);
 	trace_nfsd_file_acquire(rqstp, inode, may_flags, nf, status);
 	return status;
 
@@ -1088,8 +1090,20 @@ open_file:
 			status = nfs_ok;
 			trace_nfsd_file_opened(nf, status);
 		} else {
-			status = nfsd_open_verified(rqstp, fhp, may_flags,
-						    &nf->nf_file);
+			ret = nfsd_open_verified(rqstp, fhp, may_flags,
+						 &nf->nf_file);
+			if (ret == -EOPENSTALE && stale_retry) {
+				stale_retry = false;
+				nfsd_file_unhash(nf);
+				clear_and_wake_up_bit(NFSD_FILE_PENDING,
+						      &nf->nf_flags);
+				if (refcount_dec_and_test(&nf->nf_ref))
+					nfsd_file_free(nf);
+				nf = NULL;
+				fh_put(fhp);
+				goto retry;
+			}
+			status = nfserrno(ret);
 			trace_nfsd_file_open(nf, status);
 		}
 	} else

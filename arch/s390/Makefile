@@ -21,7 +21,7 @@ KBUILD_AFLAGS_DECOMPRESSOR := $(CLANG_FLAGS) -m64 -D__ASSEMBLY__
 ifndef CONFIG_AS_IS_LLVM
 KBUILD_AFLAGS_DECOMPRESSOR += $(if $(CONFIG_DEBUG_INFO),$(aflags_dwarf))
 endif
-KBUILD_CFLAGS_DECOMPRESSOR := $(CLANG_FLAGS) -m64 -O2 -mpacked-stack
+KBUILD_CFLAGS_DECOMPRESSOR := $(CLANG_FLAGS) -m64 -O2 -mpacked-stack -std=gnu11
 KBUILD_CFLAGS_DECOMPRESSOR += -DDISABLE_BRANCH_PROFILING -D__NO_FORTIFY
 KBUILD_CFLAGS_DECOMPRESSOR += -fno-delete-null-pointer-checks -msoft-float -mbackchain
 KBUILD_CFLAGS_DECOMPRESSOR += -fno-asynchronous-unwind-tables
@@ -138,9 +138,6 @@ bzImage: vmlinux
 zfcpdump:
 	$(Q)$(MAKE) $(build)=$(boot) $(boot)/$@
 
-vdso_install:
-	$(Q)$(MAKE) $(build)=arch/$(ARCH)/kernel/vdso64 $@
-
 archheaders:
 	$(Q)$(MAKE) $(build)=$(syscalls) uapi
 
@@ -159,6 +156,9 @@ vdso_prepare: prepare0
 	$(Q)$(MAKE) $(build)=arch/s390/kernel/vdso64 include/generated/vdso64-offsets.h
 	$(if $(CONFIG_COMPAT),$(Q)$(MAKE) \
 		$(build)=arch/s390/kernel/vdso32 include/generated/vdso32-offsets.h)
+
+vdso-install-y			+= arch/s390/kernel/vdso64/vdso64.so.dbg
+vdso-install-$(CONFIG_COMPAT)	+= arch/s390/kernel/vdso32/vdso32.so.dbg
 
 ifdef CONFIG_EXPOLINE_EXTERN
 modules_prepare: expoline_prepare

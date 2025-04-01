@@ -113,7 +113,6 @@ struct bnxt_qplib_sge {
 	u32				size;
 };
 
-#define BNXT_QPLIB_QP_MAX_SGL	6
 struct bnxt_qplib_swq {
 	u64				wr_id;
 	int				next_idx;
@@ -153,7 +152,7 @@ struct bnxt_qplib_swqe {
 #define BNXT_QPLIB_SWQE_FLAGS_UC_FENCE			BIT(2)
 #define BNXT_QPLIB_SWQE_FLAGS_SOLICIT_EVENT		BIT(3)
 #define BNXT_QPLIB_SWQE_FLAGS_INLINE			BIT(4)
-	struct bnxt_qplib_sge		sg_list[BNXT_QPLIB_QP_MAX_SGL];
+	struct bnxt_qplib_sge		sg_list[BNXT_VAR_MAX_SGE];
 	int				num_sge;
 	/* Max inline data is 96 bytes */
 	u32				inline_len;
@@ -164,12 +163,12 @@ struct bnxt_qplib_swqe {
 		/* Send, with imm, inval key */
 		struct {
 			union {
-				__be32	imm_data;
+				u32	imm_data;
 				u32	inv_key;
 			};
 			u32		q_key;
 			u32		dst_qp;
-			u16		avid;
+			u32		avid;
 		} send;
 
 		/* Send Raw Ethernet and QP1 */
@@ -182,7 +181,7 @@ struct bnxt_qplib_swqe {
 		/* RDMA write, with imm, read */
 		struct {
 			union {
-				__be32	imm_data;
+				u32	imm_data;
 				u32	inv_key;
 			};
 			u64		remote_va;
@@ -251,6 +250,7 @@ struct bnxt_qplib_q {
 	struct bnxt_qplib_db_info	dbinfo;
 	struct bnxt_qplib_sg_info	sg_info;
 	u32				max_wqe;
+	u32				max_sw_wqe;
 	u16				wqe_size;
 	u16				q_full_delta;
 	u16				max_sge;
@@ -297,6 +297,7 @@ struct bnxt_qplib_qp {
 	u32				dest_qpn;
 	u8				smac[6];
 	u16				vlan_id;
+	u16				port_id;
 	u8				nw_type;
 	struct bnxt_qplib_ah		ah;
 
@@ -338,6 +339,9 @@ struct bnxt_qplib_qp {
 	dma_addr_t			rq_hdr_buf_map;
 	struct list_head		sq_flush;
 	struct list_head		rq_flush;
+	u32				msn;
+	u32				msn_tbl_sz;
+	bool				is_host_msn_tbl;
 };
 
 #define BNXT_QPLIB_MAX_CQE_ENTRY_SIZE	sizeof(struct cq_base)
@@ -348,9 +352,21 @@ struct bnxt_qplib_qp {
 #define CQE_IDX(x)		((x) & CQE_MAX_IDX_PER_PG)
 
 #define ROCE_CQE_CMP_V			0
-#define CQE_CMP_VALID(hdr, raw_cons, cp_bit)			\
+#define CQE_CMP_VALID(hdr, pass)			\
 	(!!((hdr)->cqe_type_toggle & CQ_BASE_TOGGLE) ==		\
-	   !((raw_cons) & (cp_bit)))
+	   !((pass) & BNXT_QPLIB_FLAG_EPOCH_CONS_MASK))
+
+static inline u32 __bnxt_qplib_get_avail(struct bnxt_qplib_hwq *hwq)
+{
+	int cons, prod, avail;
+
+	cons = hwq->cons;
+	prod = hwq->prod;
+	avail = cons - prod;
+	if (cons <= prod)
+		avail += hwq->depth;
+	return avail;
+}
 
 static inline bool bnxt_qplib_queue_full(struct bnxt_qplib_q *que,
 					 u8 slots)
@@ -374,7 +390,7 @@ struct bnxt_qplib_cqe {
 	u16				cfa_meta;
 	u64				wr_id;
 	union {
-		__be32			immdata;
+		u32			immdata;
 		u32			invrkey;
 	};
 	u64				qp_handle;
@@ -443,9 +459,9 @@ struct bnxt_qplib_cq {
 #define NQE_PG(x)		(((x) & ~NQE_MAX_IDX_PER_PG) / NQE_CNT_PER_PG)
 #define NQE_IDX(x)		((x) & NQE_MAX_IDX_PER_PG)
 
-#define NQE_CMP_VALID(hdr, raw_cons, cp_bit)			\
+#define NQE_CMP_VALID(hdr, pass)			\
 	(!!(le32_to_cpu((hdr)->info63_v[0]) & NQ_BASE_V) ==	\
-	   !((raw_cons) & (cp_bit)))
+	   !((pass) & BNXT_QPLIB_FLAG_EPOCH_CONS_MASK))
 
 #define BNXT_QPLIB_NQE_MAX_CNT		(128 * 1024)
 
@@ -570,15 +586,22 @@ static inline void bnxt_qplib_swq_mod_start(struct bnxt_qplib_q *que, u32 idx)
 	que->swq_start = que->swq[idx].next_idx;
 }
 
-static inline u32 bnxt_qplib_get_depth(struct bnxt_qplib_q *que)
+static inline u32 bnxt_qplib_get_depth(struct bnxt_qplib_q *que, u8 wqe_mode, bool is_sq)
 {
-	return (que->wqe_size * que->max_wqe) / sizeof(struct sq_sge);
+	u32 slots;
+
+	/* Queue depth is the number of slots. */
+	slots = (que->wqe_size * que->max_wqe) / sizeof(struct sq_sge);
+	/* For variable WQE mode, need to align the slots to 256 */
+	if (wqe_mode == BNXT_QPLIB_WQE_MODE_VARIABLE && is_sq)
+		slots = ALIGN(slots, BNXT_VAR_MAX_SLOT_ALIGN);
+	return slots;
 }
 
 static inline u32 bnxt_qplib_set_sq_size(struct bnxt_qplib_q *que, u8 wqe_mode)
 {
 	return (wqe_mode == BNXT_QPLIB_WQE_MODE_STATIC) ?
-		que->max_wqe : bnxt_qplib_get_depth(que);
+		que->max_wqe : bnxt_qplib_get_depth(que, wqe_mode, true);
 }
 
 static inline u32 bnxt_qplib_set_sq_max_slot(u8 wqe_mode)
@@ -613,5 +636,16 @@ static inline u16 bnxt_qplib_calc_ilsize(struct bnxt_qplib_swqe *wqe, u16 max)
 		size = max;
 
 	return size;
+}
+
+/* MSN table update inlin */
+static inline __le64 bnxt_re_update_msn_tbl(u32 st_idx, u32 npsn, u32 start_psn)
+{
+	return cpu_to_le64((((u64)(st_idx) << SQ_MSN_SEARCH_START_IDX_SFT) &
+		SQ_MSN_SEARCH_START_IDX_MASK) |
+		(((u64)(npsn) << SQ_MSN_SEARCH_NEXT_PSN_SFT) &
+		SQ_MSN_SEARCH_NEXT_PSN_MASK) |
+		(((start_psn) << SQ_MSN_SEARCH_START_PSN_SFT) &
+		SQ_MSN_SEARCH_START_PSN_MASK));
 }
 #endif /* __BNXT_QPLIB_FP_H__ */

@@ -242,27 +242,25 @@ int wx_host_interface_command(struct wx *wx, u32 *buffer,
 	status = read_poll_timeout(rd32, hicr, hicr & WX_MNG_MBOX_CTL_FWRDY, 1000,
 				   timeout * 1000, false, wx, WX_MNG_MBOX_CTL);
 
+	buf[0] = rd32(wx, WX_MNG_MBOX);
+	if ((buf[0] & 0xff0000) >> 16 == 0x80) {
+		wx_err(wx, "Unknown FW command: 0x%x\n", buffer[0] & 0xff);
+		status = -EINVAL;
+		goto rel_out;
+	}
+
 	/* Check command completion */
 	if (status) {
-		wx_dbg(wx, "Command has failed with no status valid.\n");
-
-		buf[0] = rd32(wx, WX_MNG_MBOX);
-		if ((buffer[0] & 0xff) != (~buf[0] >> 24)) {
-			status = -EINVAL;
-			goto rel_out;
-		}
-		if ((buf[0] & 0xff0000) >> 16 == 0x80) {
-			wx_dbg(wx, "It's unknown cmd.\n");
-			status = -EINVAL;
-			goto rel_out;
-		}
-
+		wx_err(wx, "Command has failed with no status valid.\n");
 		wx_dbg(wx, "write value:\n");
 		for (i = 0; i < dword_len; i++)
 			wx_dbg(wx, "%x ", buffer[i]);
 		wx_dbg(wx, "read value:\n");
 		for (i = 0; i < dword_len; i++)
 			wx_dbg(wx, "%x ", buf[i]);
+		wx_dbg(wx, "\ncheck: %x %x\n", buffer[0] & 0xff, ~buf[0] >> 24);
+
+		goto rel_out;
 	}
 
 	if (!return_data)
@@ -1677,10 +1675,12 @@ int wx_sw_init(struct wx *wx)
 		wx->subsystem_device_id = pdev->subsystem_device;
 	} else {
 		err = wx_flash_read_dword(wx, 0xfffdc, &ssid);
-		if (!err)
-			wx->subsystem_device_id = swab16((u16)ssid);
+		if (err < 0) {
+			wx_err(wx, "read of internal subsystem device id failed\n");
+			return err;
+		}
 
-		return err;
+		wx->subsystem_device_id = swab16((u16)ssid);
 	}
 
 	wx->mac_table = kcalloc(wx->mac.num_rar_entries,

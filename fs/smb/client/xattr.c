@@ -150,16 +150,19 @@ static int cifs_xattr_set(const struct xattr_handler *handler,
 		if (cifs_sb->mnt_cifs_flags & CIFS_MOUNT_NO_XATTR)
 			goto out;
 
-		if (pTcon->ses->server->ops->set_EA)
+		if (pTcon->ses->server->ops->set_EA) {
 			rc = pTcon->ses->server->ops->set_EA(xid, pTcon,
 				full_path, name, value, (__u16)size,
 				cifs_sb->local_nls, cifs_sb);
+			if (rc == 0)
+				inode_set_ctime_current(inode);
+		}
 		break;
 
 	case XATTR_CIFS_ACL:
 	case XATTR_CIFS_NTSD:
 	case XATTR_CIFS_NTSD_FULL: {
-		struct cifs_ntsd *pacl;
+		struct smb_ntsd *pacl;
 
 		if (!value)
 			goto out;
@@ -312,7 +315,7 @@ static int cifs_xattr_get(const struct xattr_handler *handler,
 		 * fetch owner and DACL otherwise
 		 */
 		u32 acllen, extra_info;
-		struct cifs_ntsd *pacl;
+		struct smb_ntsd *pacl;
 
 		if (pTcon->ses->server->ops->get_acl == NULL)
 			goto out; /* rc already EOPNOTSUPP */

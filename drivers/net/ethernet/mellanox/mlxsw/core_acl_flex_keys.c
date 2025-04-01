@@ -5,6 +5,7 @@
 #include <linux/slab.h>
 #include <linux/list.h>
 #include <linux/errno.h>
+#include <linux/refcount.h>
 
 #include "item.h"
 #include "core_acl_flex_keys.h"
@@ -32,8 +33,7 @@ static const struct mlxsw_afk_element_info mlxsw_afk_element_infos[] = {
 	MLXSW_AFK_ELEMENT_INFO_U32(IP_TTL_, 0x18, 0, 8),
 	MLXSW_AFK_ELEMENT_INFO_U32(IP_ECN, 0x18, 9, 2),
 	MLXSW_AFK_ELEMENT_INFO_U32(IP_DSCP, 0x18, 11, 6),
-	MLXSW_AFK_ELEMENT_INFO_U32(VIRT_ROUTER_MSB, 0x18, 17, 4),
-	MLXSW_AFK_ELEMENT_INFO_U32(VIRT_ROUTER_LSB, 0x18, 21, 8),
+	MLXSW_AFK_ELEMENT_INFO_U32(VIRT_ROUTER, 0x18, 17, 12),
 	MLXSW_AFK_ELEMENT_INFO_BUF(SRC_IP_96_127, 0x20, 4),
 	MLXSW_AFK_ELEMENT_INFO_BUF(SRC_IP_64_95, 0x24, 4),
 	MLXSW_AFK_ELEMENT_INFO_BUF(SRC_IP_32_63, 0x28, 4),
@@ -44,6 +44,9 @@ static const struct mlxsw_afk_element_info mlxsw_afk_element_infos[] = {
 	MLXSW_AFK_ELEMENT_INFO_BUF(DST_IP_0_31, 0x3C, 4),
 	MLXSW_AFK_ELEMENT_INFO_U32(FDB_MISS, 0x40, 0, 1),
 	MLXSW_AFK_ELEMENT_INFO_U32(L4_PORT_RANGE, 0x40, 1, 16),
+	MLXSW_AFK_ELEMENT_INFO_U32(VIRT_ROUTER_0_3, 0x40, 17, 4),
+	MLXSW_AFK_ELEMENT_INFO_U32(VIRT_ROUTER_4_7, 0x40, 21, 4),
+	MLXSW_AFK_ELEMENT_INFO_U32(VIRT_ROUTER_MSB, 0x40, 25, 4),
 };
 
 struct mlxsw_afk {
@@ -64,7 +67,7 @@ static bool mlxsw_afk_blocks_check(struct mlxsw_afk *mlxsw_afk)
 
 		for (j = 0; j < block->instances_count; j++) {
 			const struct mlxsw_afk_element_info *elinfo;
-			struct mlxsw_afk_element_inst *elinst;
+			const struct mlxsw_afk_element_inst *elinst;
 
 			elinst = &block->instances[j];
 			elinfo = &mlxsw_afk_element_infos[elinst->element];
@@ -105,7 +108,7 @@ EXPORT_SYMBOL(mlxsw_afk_destroy);
 
 struct mlxsw_afk_key_info {
 	struct list_head list;
-	unsigned int ref_count;
+	refcount_t ref_count;
 	unsigned int blocks_count;
 	int element_to_block[MLXSW_AFK_ELEMENT_MAX]; /* index is element, value
 						      * is index inside "blocks"
@@ -150,7 +153,7 @@ static void mlxsw_afk_picker_count_hits(struct mlxsw_afk *mlxsw_afk,
 		const struct mlxsw_afk_block *block = &mlxsw_afk->blocks[i];
 
 		for (j = 0; j < block->instances_count; j++) {
-			struct mlxsw_afk_element_inst *elinst;
+			const struct mlxsw_afk_element_inst *elinst;
 
 			elinst = &block->instances[j];
 			if (elinst->element == element) {
@@ -282,7 +285,7 @@ mlxsw_afk_key_info_create(struct mlxsw_afk *mlxsw_afk,
 	if (err)
 		goto err_picker;
 	list_add(&key_info->list, &mlxsw_afk->key_info_list);
-	key_info->ref_count = 1;
+	refcount_set(&key_info->ref_count, 1);
 	return key_info;
 
 err_picker:
@@ -304,7 +307,7 @@ mlxsw_afk_key_info_get(struct mlxsw_afk *mlxsw_afk,
 
 	key_info = mlxsw_afk_key_info_find(mlxsw_afk, elusage);
 	if (key_info) {
-		key_info->ref_count++;
+		refcount_inc(&key_info->ref_count);
 		return key_info;
 	}
 	return mlxsw_afk_key_info_create(mlxsw_afk, elusage);
@@ -313,7 +316,7 @@ EXPORT_SYMBOL(mlxsw_afk_key_info_get);
 
 void mlxsw_afk_key_info_put(struct mlxsw_afk_key_info *key_info)
 {
-	if (--key_info->ref_count)
+	if (!refcount_dec_and_test(&key_info->ref_count))
 		return;
 	mlxsw_afk_key_info_destroy(key_info);
 }
@@ -333,7 +336,7 @@ mlxsw_afk_block_elinst_get(const struct mlxsw_afk_block *block,
 	int i;
 
 	for (i = 0; i < block->instances_count; i++) {
-		struct mlxsw_afk_element_inst *elinst;
+		const struct mlxsw_afk_element_inst *elinst;
 
 		elinst = &block->instances[i];
 		if (elinst->element == element)

@@ -200,13 +200,13 @@ out:
 	return error;
 }
 
-SYSCALL_DEFINE2(ftruncate, unsigned int, fd, unsigned long, length)
+SYSCALL_DEFINE2(ftruncate, unsigned int, fd, off_t, length)
 {
 	return do_sys_ftruncate(fd, length, 1);
 }
 
 #ifdef CONFIG_COMPAT
-COMPAT_SYSCALL_DEFINE2(ftruncate, unsigned int, fd, compat_ulong_t, length)
+COMPAT_SYSCALL_DEFINE2(ftruncate, unsigned int, fd, compat_off_t, length)
 {
 	return do_sys_ftruncate(fd, length, 1);
 }
@@ -1069,8 +1069,6 @@ struct file *dentry_open(const struct path *path, int flags,
 	int error;
 	struct file *f;
 
-	validate_creds(cred);
-
 	/* We must always pass in a valid mount pointer. */
 	BUG_ON(!path->mnt);
 
@@ -1109,7 +1107,6 @@ struct file *dentry_create(const struct path *path, int flags, umode_t mode,
 	struct file *f;
 	int error;
 
-	validate_creds(cred);
 	f = alloc_empty_file(flags, cred);
 	if (IS_ERR(f))
 		return f;
@@ -1464,6 +1461,8 @@ SYSCALL_DEFINE4(openat2, int, dfd, const char __user *, filename,
 
 	if (unlikely(usize < OPEN_HOW_SIZE_VER0))
 		return -EINVAL;
+	if (unlikely(usize > PAGE_SIZE))
+		return -E2BIG;
 
 	err = copy_struct_from_user(&tmp, sizeof(tmp), how, usize);
 	if (err)

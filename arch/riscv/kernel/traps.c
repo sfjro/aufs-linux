@@ -34,7 +34,7 @@
 
 int show_unhandled_signals = 1;
 
-static DEFINE_SPINLOCK(die_lock);
+static DEFINE_RAW_SPINLOCK(die_lock);
 
 static void dump_kernel_instr(const char *loglvl, struct pt_regs *regs)
 {
@@ -66,7 +66,7 @@ void die(struct pt_regs *regs, const char *str)
 
 	oops_enter();
 
-	spin_lock_irqsave(&die_lock, flags);
+	raw_spin_lock_irqsave(&die_lock, flags);
 	console_verbose();
 	bust_spinlocks(1);
 
@@ -85,7 +85,7 @@ void die(struct pt_regs *regs, const char *str)
 
 	bust_spinlocks(0);
 	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
-	spin_unlock_irqrestore(&die_lock, flags);
+	raw_spin_unlock_irqrestore(&die_lock, flags);
 	oops_exit();
 
 	if (in_interrupt())
@@ -311,6 +311,7 @@ asmlinkage __visible __trap_section void do_trap_ecall_u(struct pt_regs *regs)
 
 		regs->epc += 4;
 		regs->orig_a0 = regs->a0;
+		regs->a0 = -ENOSYS;
 
 		riscv_v_vstate_discard(regs);
 
@@ -318,8 +319,6 @@ asmlinkage __visible __trap_section void do_trap_ecall_u(struct pt_regs *regs)
 
 		if (syscall >= 0 && syscall < NR_syscalls)
 			syscall_handler(regs, syscall);
-		else if (syscall != -1)
-			regs->a0 = -ENOSYS;
 
 		syscall_exit_to_user_mode(regs);
 	} else {
@@ -410,47 +409,13 @@ int is_valid_bugaddr(unsigned long pc)
 #endif /* CONFIG_GENERIC_BUG */
 
 #ifdef CONFIG_VMAP_STACK
-/*
- * Extra stack space that allows us to provide panic messages when the kernel
- * has overflowed its stack.
- */
-static DEFINE_PER_CPU(unsigned long [OVERFLOW_STACK_SIZE/sizeof(long)],
+DEFINE_PER_CPU(unsigned long [OVERFLOW_STACK_SIZE/sizeof(long)],
 		overflow_stack)__aligned(16);
-/*
- * A temporary stack for use by handle_kernel_stack_overflow.  This is used so
- * we can call into C code to get the per-hart overflow stack.  Usage of this
- * stack must be protected by spin_shadow_stack.
- */
-long shadow_stack[SHADOW_OVERFLOW_STACK_SIZE/sizeof(long)] __aligned(16);
-
-/*
- * A pseudo spinlock to protect the shadow stack from being used by multiple
- * harts concurrently.  This isn't a real spinlock because the lock side must
- * be taken without a valid stack and only a single register, it's only taken
- * while in the process of panicing anyway so the performance and error
- * checking a proper spinlock gives us doesn't matter.
- */
-unsigned long spin_shadow_stack;
-
-asmlinkage unsigned long get_overflow_stack(void)
-{
-	return (unsigned long)this_cpu_ptr(overflow_stack) +
-		OVERFLOW_STACK_SIZE;
-}
 
 asmlinkage void handle_bad_stack(struct pt_regs *regs)
 {
 	unsigned long tsk_stk = (unsigned long)current->stack;
 	unsigned long ovf_stk = (unsigned long)this_cpu_ptr(overflow_stack);
-
-	/*
-	 * We're done with the shadow stack by this point, as we're on the
-	 * overflow stack.  Tell any other concurrent overflowing harts that
-	 * they can proceed with panicing by releasing the pseudo-spinlock.
-	 *
-	 * This pairs with an amoswap.aq in handle_kernel_stack_overflow.
-	 */
-	smp_store_release(&spin_shadow_stack, 0);
 
 	console_verbose();
 

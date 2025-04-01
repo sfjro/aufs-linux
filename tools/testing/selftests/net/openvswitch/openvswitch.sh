@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # SPDX-License-Identifier: GPL-2.0
 #
 # OVS kernel module self tests
@@ -128,8 +128,10 @@ ovs_add_netns_and_veths () {
 		ovs_add_if "$1" "$2" "$4" -u || return 1
 	fi
 
-	[ $TRACING -eq 1 ] && ovs_netns_spawn_daemon "$1" "$ns" \
-			tcpdump -i any -s 65535
+	if [ $TRACING -eq 1 ]; then
+		ovs_netns_spawn_daemon "$1" "$3" tcpdump -l -i any -s 6553
+		ovs_wait grep -q "listening on any" ${ovs_dir}/stderr
+	fi
 
 	return 0
 }
@@ -502,7 +504,20 @@ test_netlink_checks () {
 	    wc -l) == 2 ] || \
 	      return 1
 
+	info "Checking clone depth"
 	ERR_MSG="Flow actions may not be safe on all matching packets"
+	PRE_TEST=$(dmesg | grep -c "${ERR_MSG}")
+	ovs_add_flow "test_netlink_checks" nv0 \
+		'in_port(1),eth(),eth_type(0x800),ipv4()' \
+		'clone(clone(clone(clone(clone(clone(clone(clone(clone(clone(clone(clone(clone(clone(clone(clone(clone(drop)))))))))))))))))' \
+		>/dev/null 2>&1 && return 1
+	POST_TEST=$(dmesg | grep -c "${ERR_MSG}")
+
+	if [ "$PRE_TEST" == "$POST_TEST" ]; then
+		info "failed - clone depth too large"
+		return 1
+	fi
+
 	PRE_TEST=$(dmesg | grep -c "${ERR_MSG}")
 	ovs_add_flow "test_netlink_checks" nv0 \
 		'in_port(1),eth(),eth_type(0x0806),arp()' 'drop(0),2' \

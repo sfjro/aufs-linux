@@ -203,6 +203,11 @@ int cn10k_alloc_leaf_profile(struct otx2_nic *pfvf, u16 *leaf)
 
 	rsp = (struct  nix_bandprof_alloc_rsp *)
 	       otx2_mbox_get_rsp(&pfvf->mbox.mbox, 0, &req->hdr);
+	if (IS_ERR(rsp)) {
+		rc = PTR_ERR(rsp);
+		goto out;
+	}
+
 	if (!rsp->prof_count[BAND_PROF_LEAF_LAYER]) {
 		rc = -EIO;
 		goto out;
@@ -449,6 +454,9 @@ int cn10k_set_ipolicer_rate(struct otx2_nic *pfvf, u16 profile,
 
 	aq->prof.pebs_mantissa = 0;
 	aq->prof_mask.pebs_mantissa = 0xFF;
+
+	aq->prof.hl_en = 0;
+	aq->prof_mask.hl_en = 1;
 
 	/* Fill AQ info */
 	aq->qidx = profile;

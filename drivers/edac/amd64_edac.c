@@ -80,7 +80,7 @@ int __amd64_read_pci_cfg_dword(struct pci_dev *pdev, int offset,
 		amd64_warn("%s: error reading F%dx%03x.\n",
 			   func, PCI_FUNC(pdev->devfn), offset);
 
-	return err;
+	return pcibios_err_to_errno(err);
 }
 
 int __amd64_write_pci_cfg_dword(struct pci_dev *pdev, int offset,
@@ -93,7 +93,7 @@ int __amd64_write_pci_cfg_dword(struct pci_dev *pdev, int offset,
 		amd64_warn("%s: error writing to F%dx%03x.\n",
 			   func, PCI_FUNC(pdev->devfn), offset);
 
-	return err;
+	return pcibios_err_to_errno(err);
 }
 
 /*
@@ -1016,8 +1016,10 @@ static int gpu_get_node_map(void)
 	}
 
 	ret = pci_read_config_dword(pdev, REG_LOCAL_NODE_TYPE_MAP, &tmp);
-	if (ret)
+	if (ret) {
+		ret = pcibios_err_to_errno(ret);
 		goto out;
+	}
 
 	gpu_node_map.node_count = FIELD_GET(LNTM_NODE_COUNT, tmp);
 	gpu_node_map.base_node_id = FIELD_GET(LNTM_BASE_NODE_ID, tmp);
@@ -3618,36 +3620,24 @@ static bool dct_ecc_enabled(struct amd64_pvt *pvt)
 
 static bool umc_ecc_enabled(struct amd64_pvt *pvt)
 {
-	u8 umc_en_mask = 0, ecc_en_mask = 0;
-	u16 nid = pvt->mc_node_id;
 	struct amd64_umc *umc;
-	u8 ecc_en = 0, i;
+	bool ecc_en = false;
+	int i;
 
+	/* Check whether at least one UMC is enabled: */
 	for_each_umc(i) {
 		umc = &pvt->umc[i];
 
-		/* Only check enabled UMCs. */
-		if (!(umc->sdp_ctrl & UMC_SDP_INIT))
-			continue;
-
-		umc_en_mask |= BIT(i);
-
-		if (umc->umc_cap_hi & UMC_ECC_ENABLED)
-			ecc_en_mask |= BIT(i);
+		if (umc->sdp_ctrl & UMC_SDP_INIT &&
+		    umc->umc_cap_hi & UMC_ECC_ENABLED) {
+			ecc_en = true;
+			break;
+		}
 	}
 
-	/* Check whether at least one UMC is enabled: */
-	if (umc_en_mask)
-		ecc_en = umc_en_mask == ecc_en_mask;
-	else
-		edac_dbg(0, "Node %d: No enabled UMCs.\n", nid);
+	edac_dbg(3, "Node %d: DRAM ECC %s.\n", pvt->mc_node_id, (ecc_en ? "enabled" : "disabled"));
 
-	edac_dbg(3, "Node %d: DRAM ECC %s.\n", nid, (ecc_en ? "enabled" : "disabled"));
-
-	if (!ecc_en)
-		return false;
-	else
-		return true;
+	return ecc_en;
 }
 
 static inline void

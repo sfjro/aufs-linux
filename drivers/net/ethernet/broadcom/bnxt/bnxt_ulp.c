@@ -159,7 +159,7 @@ int bnxt_send_msg(struct bnxt_en_dev *edev,
 
 	rc = hwrm_req_replace(bp, req, fw_msg->msg, fw_msg->msg_len);
 	if (rc)
-		return rc;
+		goto drop_req;
 
 	hwrm_req_timeout(bp, req, fw_msg->timeout);
 	resp = hwrm_req_hold(bp, req);
@@ -171,6 +171,7 @@ int bnxt_send_msg(struct bnxt_en_dev *edev,
 
 		memcpy(fw_msg->resp, resp, resp_len);
 	}
+drop_req:
 	hwrm_req_drop(bp, req);
 	return rc;
 }
@@ -212,6 +213,9 @@ void bnxt_ulp_start(struct bnxt *bp, int err)
 
 	if (err)
 		return;
+
+	if (edev->ulp_tbl->msix_requested)
+		bnxt_fill_msix_vecs(bp, edev->msix_entries);
 
 	if (aux_priv) {
 		struct auxiliary_device *adev;
@@ -394,12 +398,13 @@ void bnxt_rdma_aux_device_init(struct bnxt *bp)
 	if (!edev)
 		goto aux_dev_uninit;
 
+	aux_priv->edev = edev;
+
 	ulp = kzalloc(sizeof(*ulp), GFP_KERNEL);
 	if (!ulp)
 		goto aux_dev_uninit;
 
 	edev->ulp_tbl = ulp;
-	aux_priv->edev = edev;
 	bp->edev = edev;
 	bnxt_set_edev_info(edev, bp);
 

@@ -592,7 +592,7 @@ static int rawv6_send_hdrinc(struct sock *sk, struct msghdr *msg, int length,
 	struct ipv6hdr *iph;
 	struct sk_buff *skb;
 	int err;
-	struct rt6_info *rt = (struct rt6_info *)*dstp;
+	struct rt6_info *rt = dst_rt6_info(*dstp);
 	int hlen = LL_RESERVED_SPACE(rt->dst.dev);
 	int tlen = rt->dst.dev->needed_tailroom;
 
@@ -651,7 +651,7 @@ static int rawv6_send_hdrinc(struct sock *sk, struct msghdr *msg, int length,
 	 * have been queued for deletion.
 	 */
 	rcu_read_lock();
-	IP6_UPD_PO_STATS(net, rt->rt6i_idev, IPSTATS_MIB_OUT, skb->len);
+	IP6_INC_STATS(net, rt->rt6i_idev, IPSTATS_MIB_OUTREQUESTS);
 	err = NF_HOOK(NFPROTO_IPV6, NF_INET_LOCAL_OUT, net, sk, skb,
 		      NULL, rt->dst.dev, dst_output);
 	if (err > 0)
@@ -911,7 +911,7 @@ back_from_confirm:
 		ipc6.opt = opt;
 		lock_sock(sk);
 		err = ip6_append_data(sk, raw6_getfrag, &rfv,
-			len, 0, &ipc6, &fl6, (struct rt6_info *)dst,
+			len, 0, &ipc6, &fl6, dst_rt6_info(dst),
 			msg->msg_flags);
 
 		if (err)

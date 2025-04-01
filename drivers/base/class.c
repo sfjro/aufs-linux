@@ -215,6 +215,7 @@ int class_register(const struct class *cls)
 	return 0;
 
 err_out:
+	lockdep_unregister_key(key);
 	kfree(cp);
 	return error;
 }
@@ -313,8 +314,12 @@ void class_dev_iter_init(struct class_dev_iter *iter, const struct class *class,
 	struct subsys_private *sp = class_to_subsys(class);
 	struct klist_node *start_knode = NULL;
 
-	if (!sp)
+	memset(iter, 0, sizeof(*iter));
+	if (!sp) {
+		pr_crit("%s: class %p was not registered yet\n",
+			__func__, class);
 		return;
+	}
 
 	if (start)
 		start_knode = &start->p->knode_class;
@@ -340,6 +345,9 @@ struct device *class_dev_iter_next(struct class_dev_iter *iter)
 {
 	struct klist_node *knode;
 	struct device *dev;
+
+	if (!iter->sp)
+		return NULL;
 
 	while (1) {
 		knode = klist_next(&iter->ki);
