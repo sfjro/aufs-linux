@@ -529,7 +529,7 @@ static int au_do_cpup_regular(struct au_cp_generic *cpg,
 			goto out;
 		}
 		h_src_attr->valid = 1;
-		if (!au_test_nfs(h_src_inode->i_sb)) {
+		if (!au_test_fs_unlock_for_open(h_src_inode->i_sb)) {
 			err = au_cp_regular(cpg);
 			inode_unlock_shared(h_src_inode);
 		} else {
