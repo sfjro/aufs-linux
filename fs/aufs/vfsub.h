@@ -206,7 +206,7 @@ int vfsub_link(struct dentry *src_dentry, struct inode *dir,
 int vfsub_rename(struct inode *src_hdir, struct dentry *src_dentry,
 		 struct inode *hdir, struct path *path,
 		 struct inode **delegated_inode, unsigned int flags);
-int vfsub_mkdir(struct inode *dir, struct path *path, int mode);
+struct dentry *vfsub_mkdir(struct inode *dir, struct path *path, int mode);
 int vfsub_rmdir(struct inode *dir, struct path *path);
 
 /* ---------------------------------------------------------------------- */
@@ -351,7 +351,7 @@ static inline loff_t vfsub_llseek(struct file *file, loff_t offset, int origin)
 
 /* ---------------------------------------------------------------------- */
 
-int vfsub_sio_mkdir(struct inode *dir, struct path *path, int mode);
+struct dentry *vfsub_sio_mkdir(struct inode *dir, struct path *path, int mode);
 int vfsub_sio_rmdir(struct inode *dir, struct path *path);
 int vfsub_sio_notify_change(struct path *path, struct iattr *ia,
 			    struct inode **delegated_inode);
