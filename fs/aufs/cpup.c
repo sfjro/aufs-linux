@@ -639,7 +639,7 @@ int cpup_entry(struct au_cp_generic *cpg, struct dentry *dst_parent,
 	const unsigned char do_dt = !!au_ftest_cpup(cpg->flags, DTIME);
 	struct au_dtime dt;
 	struct path h_path;
-	struct dentry *h_src, *h_dst, *h_parent;
+	struct dentry *h_src, *h_dst, *h_parent, *ret;
 	struct inode *h_inode, *h_dir;
 	struct super_block *sb;
 
@@ -678,9 +678,16 @@ int cpup_entry(struct au_cp_generic *cpg, struct dentry *dst_parent,
 		break;
 	case S_IFDIR:
 		isdir = 1;
-		err = vfsub_mkdir(h_dir, &h_path, mode);
-		if (!err)
+		ret = vfsub_mkdir(h_dir, &h_path, mode);
+		if (IS_ERR(ret))
+			err = PTR_ERR(ret);
+		else {
+			if (ret && ret != h_path.dentry) {
+				h_path.dentry = dget(ret);
+				au_set_h_dptr(cpg->dentry, cpg->bdst, ret);
+			}
 			err = au_do_cpup_dir(cpg, dst_parent, h_dir, &h_path);
+		}
 		break;
 	case S_IFLNK:
 		err = au_do_cpup_symlink(&h_path, h_src, h_dir);
