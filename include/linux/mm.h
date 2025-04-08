@@ -2562,6 +2562,15 @@ static inline struct vm_area_struct *vma_lookup(struct mm_struct *mm,
 						unsigned long addr);
 
 #if IS_ENABLED(CONFIG_AUFS_FS)
+static inline struct file *vma_prfile_value(struct vm_area_struct *vma)
+{
+	return vma->vm_prfile;
+}
+static inline void vma_prfile_set(struct vm_area_struct *vma, struct file *pr)
+{
+	vma->vm_prfile = pr;
+}
+
 extern void vma_do_file_update_time(struct vm_area_struct *, const char[], int);
 extern struct file *vma_do_pr_or_file(struct vm_area_struct *, const char[],
 				      int);
@@ -2585,6 +2594,8 @@ extern void vmr_do_fput(struct vm_region *, const char[], int);
 #endif /* !CONFIG_MMU */
 
 #else
+#define vma_prfile_value(vma)	(NULL)
+#define vma_prfile_set(vma, pr)	/* empty */
 
 #define vma_file_update_time(vma)	file_update_time((vma)->vm_file)
 #define vma_pr_or_file(vma)		(vma)->vm_file
