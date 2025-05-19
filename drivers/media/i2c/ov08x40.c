@@ -1937,43 +1937,6 @@ static int ov08x40_stop_streaming(struct ov08x40 *ov08x)
 				 OV08X40_REG_VALUE_08BIT, OV08X40_MODE_STANDBY);
 }
 
-static int ov08x40_set_stream(struct v4l2_subdev *sd, int enable)
-{
-	struct ov08x40 *ov08x = to_ov08x40(sd);
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int ret = 0;
-
-	mutex_lock(&ov08x->mutex);
-
-	if (enable) {
-		ret = pm_runtime_resume_and_get(&client->dev);
-		if (ret < 0)
-			goto err_unlock;
-
-		/*
-		 * Apply default & customized values
-		 * and then start streaming.
-		 */
-		ret = ov08x40_start_streaming(ov08x);
-		if (ret)
-			goto err_rpm_put;
-	} else {
-		ov08x40_stop_streaming(ov08x);
-		pm_runtime_put(&client->dev);
-	}
-
-	mutex_unlock(&ov08x->mutex);
-
-	return ret;
-
-err_rpm_put:
-	pm_runtime_put(&client->dev);
-err_unlock:
-	mutex_unlock(&ov08x->mutex);
-
-	return ret;
-}
-
 /* Verify chip ID */
 static int ov08x40_identify_module(struct ov08x40 *ov08x)
 {
@@ -1998,6 +1961,47 @@ static int ov08x40_identify_module(struct ov08x40 *ov08x)
 	ov08x->identified = true;
 
 	return 0;
+}
+
+static int ov08x40_set_stream(struct v4l2_subdev *sd, int enable)
+{
+	struct ov08x40 *ov08x = to_ov08x40(sd);
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	int ret = 0;
+
+	mutex_lock(&ov08x->mutex);
+
+	if (enable) {
+		ret = pm_runtime_resume_and_get(&client->dev);
+		if (ret < 0)
+			goto err_unlock;
+
+		ret = ov08x40_identify_module(ov08x);
+		if (ret)
+			goto err_rpm_put;
+
+		/*
+		 * Apply default & customized values
+		 * and then start streaming.
+		 */
+		ret = ov08x40_start_streaming(ov08x);
+		if (ret)
+			goto err_rpm_put;
+	} else {
+		ov08x40_stop_streaming(ov08x);
+		pm_runtime_put(&client->dev);
+	}
+
+	mutex_unlock(&ov08x->mutex);
+
+	return ret;
+
+err_rpm_put:
+	pm_runtime_put(&client->dev);
+err_unlock:
+	mutex_unlock(&ov08x->mutex);
+
+	return ret;
 }
 
 static const struct v4l2_subdev_video_ops ov08x40_video_ops = {
@@ -2324,10 +2328,13 @@ static void ov08x40_remove(struct i2c_client *client)
 	ov08x40_free_controls(ov08x);
 
 	pm_runtime_disable(&client->dev);
+	if (!pm_runtime_status_suspended(&client->dev))
+		ov08x40_power_off(&client->dev);
 	pm_runtime_set_suspended(&client->dev);
-
-	ov08x40_power_off(&client->dev);
 }
+
+static DEFINE_RUNTIME_DEV_PM_OPS(ov08x40_pm_ops, ov08x40_power_off,
+				 ov08x40_power_on, NULL);
 
 #ifdef CONFIG_ACPI
 static const struct acpi_device_id ov08x40_acpi_ids[] = {
@@ -2349,6 +2356,7 @@ static struct i2c_driver ov08x40_i2c_driver = {
 		.name = "ov08x40",
 		.acpi_match_table = ACPI_PTR(ov08x40_acpi_ids),
 		.of_match_table = ov08x40_of_match,
+		.pm = pm_sleep_ptr(&ov08x40_pm_ops),
 	},
 	.probe = ov08x40_probe,
 	.remove = ov08x40_remove,
