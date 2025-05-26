@@ -97,7 +97,7 @@ static int au_cpdown_dir(struct dentry *dentry, aufs_bindex_t bdst,
 	int err, rerr;
 	aufs_bindex_t bopq, btop;
 	struct path h_path;
-	struct dentry *parent;
+	struct dentry *parent, *ret;
 	struct inode *h_dir, *h_inode, *inode, *dir;
 	unsigned int *flags = arg;
 
@@ -114,9 +114,14 @@ static int au_cpdown_dir(struct dentry *dentry, aufs_bindex_t bdst,
 		goto out;
 	h_path.dentry = au_h_dptr(dentry, bdst);
 	h_path.mnt = au_sbr_mnt(dentry->d_sb, bdst);
-	err = vfsub_sio_mkdir(au_h_iptr(dir, bdst), &h_path, 0755);
-	if (unlikely(err))
+	ret = vfsub_sio_mkdir(au_h_iptr(dir, bdst), &h_path, 0755);
+	if (IS_ERR(ret)) {
+		err = PTR_ERR(ret);
 		goto out_put;
+	} else if (ret && ret != h_path.dentry) {
+		h_path.dentry = dget(ret);
+		au_set_h_dptr(dentry, bdst, ret);
+	}
 	au_fset_cpdown(*flags, MADE_DIR);
 
 	bopq = au_dbdiropq(dentry);

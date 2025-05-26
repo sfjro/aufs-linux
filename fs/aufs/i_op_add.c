@@ -848,14 +848,14 @@ out:
 	return err;
 }
 
-int aufs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
-	       struct dentry *dentry, umode_t mode)
+struct dentry *aufs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
+			  struct dentry *dentry, umode_t mode)
 {
 	int err, rerr;
 	aufs_bindex_t bindex;
 	unsigned char diropq;
 	struct path h_path;
-	struct dentry *wh_dentry, *parent, *opq_dentry;
+	struct dentry *wh_dentry, *parent, *opq_dentry, *ret;
 	struct inode *h_inode;
 	struct super_block *sb;
 	struct {
@@ -869,15 +869,17 @@ int aufs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 
 	IMustLock(dir);
 
-	err = -ENOMEM;
+	ret = ERR_PTR(-ENOMEM);
 	a = kmalloc(sizeof(*a), GFP_NOFS);
 	if (unlikely(!a))
 		goto out;
 
 	err = aufs_read_lock(dentry, AuLock_DW | AuLock_GEN);
+	ret = ERR_PTR(err);
 	if (unlikely(err))
 		goto out_free;
 	err = au_d_may_add(dentry);
+	ret = ERR_PTR(err);
 	if (unlikely(err))
 		goto out_unlock;
 
@@ -885,7 +887,7 @@ int aufs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 	di_write_lock_parent(parent);
 	wh_dentry = lock_hdir_lkup_wh(dentry, &a->dt, /*src_dentry*/NULL,
 				      &a->pin, &wr_dir_args);
-	err = PTR_ERR(wh_dentry);
+	ret = wh_dentry;
 	if (IS_ERR(wh_dentry))
 		goto out_parent;
 
@@ -893,9 +895,13 @@ int aufs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 	bindex = au_dbtop(dentry);
 	h_path.dentry = au_h_dptr(dentry, bindex);
 	h_path.mnt = au_sbr_mnt(sb, bindex);
-	err = vfsub_mkdir(au_pinned_h_dir(&a->pin), &h_path, mode);
-	if (unlikely(err))
+	ret = vfsub_mkdir(au_pinned_h_dir(&a->pin), &h_path, mode);
+	if (IS_ERR(ret))
 		goto out_unpin;
+	if (ret && ret != h_path.dentry) {
+		au_set_h_dptr(dentry, bindex, dget(ret));
+		h_path.dentry = ret;
+	}
 
 	/* make the dir opaque */
 	diropq = 0;
@@ -905,14 +911,16 @@ int aufs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 		inode_lock_nested(h_inode, AuLsc_I_CHILD);
 		opq_dentry = au_diropq_create(dentry, bindex);
 		inode_unlock(h_inode);
-		err = PTR_ERR(opq_dentry);
-		if (IS_ERR(opq_dentry))
+		if (IS_ERR(opq_dentry)) {
+			ret = opq_dentry;
 			goto out_dir;
+		}
 		dput(opq_dentry);
 		diropq = 1;
 	}
 
 	err = epilog(dir, bindex, wh_dentry, dentry);
+	ret = ERR_PTR(err); /* NULL or error */
 	if (!err) {
 		vfsub_inc_nlink(dir);
 		goto out_unpin; /* success */
@@ -927,7 +935,7 @@ int aufs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
 		if (rerr) {
 			AuIOErr("%pd reverting diropq failed(%d, %d)\n",
 				dentry, err, rerr);
-			err = -EIO;
+			ret = ERR_PTR(-EIO);
 		}
 	}
 
@@ -937,7 +945,7 @@ out_dir:
 	if (rerr) {
 		AuIOErr("%pd reverting dir failed(%d, %d)\n",
 			dentry, err, rerr);
-		err = -EIO;
+		ret = ERR_PTR(-EIO);
 	}
 	au_dtime_revert(&a->dt);
 out_unpin:
@@ -946,7 +954,7 @@ out_unpin:
 out_parent:
 	di_write_unlock(parent);
 out_unlock:
-	if (unlikely(err)) {
+	if (IS_ERR(ret)) {
 		au_update_dbtop(dentry);
 		d_drop(dentry);
 	}
@@ -954,5 +962,5 @@ out_unlock:
 out_free:
 	au_kfree_rcu(a);
 out:
-	return err;
+	return ret;
 }

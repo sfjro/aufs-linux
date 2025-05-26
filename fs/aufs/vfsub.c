@@ -489,11 +489,12 @@ out:
 	return err;
 }
 
-int vfsub_mkdir(struct inode *dir, struct path *path, int mode)
+struct dentry *vfsub_mkdir(struct inode *dir, struct path *path, int mode)
 {
-	int err;
-	struct dentry *d;
+	int err, did;
+	struct dentry *d, *ret;
 	struct mnt_idmap *idmap;
+	struct path tmp;
 
 	IMustLock(dir);
 
@@ -501,27 +502,32 @@ int vfsub_mkdir(struct inode *dir, struct path *path, int mode)
 	path->dentry = d->d_parent;
 	err = security_path_mkdir(path, d, mode);
 	path->dentry = d;
+	ret = ERR_PTR(err);
 	if (unlikely(err))
 		goto out;
 	idmap = mnt_idmap(path->mnt);
 
+	/* vfs_mkdir() calls dput() on error */
+	dget(path->dentry);
 	lockdep_off();
-	err = vfs_mkdir(idmap, dir, path->dentry, mode);
+	ret = vfs_mkdir(idmap, dir, path->dentry, mode);
 	lockdep_on();
-	if (!err) {
-		struct path tmp = *path;
-		int did;
+	if (IS_ERR(ret))
+		goto out;
+	dput(path->dentry);
 
-		vfsub_update_h_iattr(&tmp, &did);
-		if (did) {
-			tmp.dentry = path->dentry->d_parent;
-			vfsub_update_h_iattr(&tmp, /*did*/NULL);
-		}
-		/*ignore*/
+	tmp = *path;
+	if (ret)
+		tmp.dentry = ret;
+	vfsub_update_h_iattr(&tmp, &did);
+	if (did) {
+		tmp.dentry = tmp.dentry->d_parent;
+		vfsub_update_h_iattr(&tmp, /*did*/NULL);
 	}
+	/*ignore*/
 
 out:
-	return err;
+	return ret;
 }
 
 int vfsub_rmdir(struct inode *dir, struct path *path)
@@ -728,7 +734,7 @@ out:
 /* ---------------------------------------------------------------------- */
 
 struct au_vfsub_mkdir_args {
-	int *errp;
+	struct dentry **errp;
 	struct inode *dir;
 	struct path *path;
 	int mode;
@@ -740,30 +746,31 @@ static void au_call_vfsub_mkdir(void *args)
 	*a->errp = vfsub_mkdir(a->dir, a->path, a->mode);
 }
 
-int vfsub_sio_mkdir(struct inode *dir, struct path *path, int mode)
+struct dentry *vfsub_sio_mkdir(struct inode *dir, struct path *path, int mode)
 {
-	int err, do_sio, wkq_err;
+	int err, do_sio;
 	struct mnt_idmap *idmap;
+	struct dentry *ret;
 
 	idmap = mnt_idmap(path->mnt);
 	do_sio = au_test_h_perm_sio(idmap, dir, MAY_EXEC | MAY_WRITE);
 	if (!do_sio) {
 		lockdep_off();
-		err = vfsub_mkdir(dir, path, mode);
+		ret = vfsub_mkdir(dir, path, mode);
 		lockdep_on();
 	} else {
 		struct au_vfsub_mkdir_args args = {
-			.errp	= &err,
+			.errp	= &ret,
 			.dir	= dir,
 			.path	= path,
 			.mode	= mode
 		};
-		wkq_err = au_wkq_wait(au_call_vfsub_mkdir, &args);
-		if (unlikely(wkq_err))
-			err = wkq_err;
+		err = au_wkq_wait(au_call_vfsub_mkdir, &args);
+		if (unlikely(err))
+			ret = ERR_PTR(err);
 	}
 
-	return err;
+	return ret;
 }
 
 struct au_vfsub_rmdir_args {

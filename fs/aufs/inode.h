@@ -235,8 +235,8 @@ int aufs_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
 		 struct file *file, umode_t mode);
 int aufs_link(struct dentry *src_dentry, struct inode *dir,
 	      struct dentry *dentry);
-int aufs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
-	       struct dentry *dentry, umode_t mode);
+struct dentry *aufs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
+			  struct dentry *dentry, umode_t mode);
 
 /* i_op_del.c */
 int au_wr_dir_need_wh(struct dentry *dentry, int isdir, aufs_bindex_t *bcpup);
