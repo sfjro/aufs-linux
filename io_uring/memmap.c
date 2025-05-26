@@ -116,7 +116,7 @@ static int io_region_init_ptr(struct io_mapped_region *mr)
 	void *ptr;
 
 	if (io_check_coalesce_buffer(mr->pages, mr->nr_pages, &ifd)) {
-		if (ifd.nr_folios == 1) {
+		if (ifd.nr_folios == 1 && !PageHighMem(mr->pages[0])) {
 			mr->ptr = page_address(mr->pages[0]);
 			return 0;
 		}
@@ -271,6 +271,8 @@ static struct io_mapped_region *io_mmap_get_region(struct io_ring_ctx *ctx,
 		return io_pbuf_get_region(ctx, bgid);
 	case IORING_MAP_OFF_PARAM_REGION:
 		return &ctx->param_region;
+	case IORING_MAP_OFF_ZCRX_REGION:
+		return &ctx->zcrx_region;
 	}
 	return NULL;
 }
