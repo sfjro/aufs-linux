@@ -161,7 +161,6 @@ static void dy_aop(struct au_dykey *key, const void *h_op,
 
 	AuDbg("%s\n", au_sbtype(h_sb));
 
-	DySetAop(writepage);
 	DySetAopForce(read_folio);	/* force */
 	DySetAop(writepages);
 	DySetAop(dirty_folio);
