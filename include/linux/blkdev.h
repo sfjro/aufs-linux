@@ -25,6 +25,7 @@
 #include <linux/uuid.h>
 #include <linux/xarray.h>
 #include <linux/file.h>
+#include <linux/lockdep.h>
 
 struct module;
 struct request_queue;
@@ -194,13 +195,12 @@ struct gendisk {
 	unsigned int		nr_zones;
 	unsigned int		zone_capacity;
 	unsigned int		last_zone_capacity;
-	unsigned long		*conv_zones_bitmap;
-	unsigned int            zone_wplugs_hash_bits;
-	spinlock_t              zone_wplugs_lock;
+	unsigned long __rcu	*conv_zones_bitmap;
+	unsigned int		zone_wplugs_hash_bits;
+	atomic_t		nr_zone_wplugs;
+	spinlock_t		zone_wplugs_lock;
 	struct mempool_s	*zone_wplugs_pool;
-	struct hlist_head       *zone_wplugs_hash;
-	struct list_head        zone_wplugs_err_list;
-	struct work_struct	zone_wplugs_work;
+	struct hlist_head	*zone_wplugs_hash;
 	struct workqueue_struct *zone_wplugs_wq;
 #endif /* CONFIG_BLK_DEV_ZONED */
 
@@ -471,6 +471,11 @@ struct request_queue {
 	struct xarray		hctx_table;
 
 	struct percpu_ref	q_usage_counter;
+	struct lock_class_key	io_lock_cls_key;
+	struct lockdep_map	io_lockdep_map;
+
+	struct lock_class_key	q_lock_cls_key;
+	struct lockdep_map	q_lockdep_map;
 
 	struct request		*last_merge;
 
@@ -566,6 +571,10 @@ struct request_queue {
 	struct throtl_data *td;
 #endif
 	struct rcu_head		rcu_head;
+#ifdef CONFIG_LOCKDEP
+	struct task_struct	*mq_freeze_owner;
+	int			mq_freeze_owner_depth;
+#endif
 	wait_queue_head_t	mq_freeze_wq;
 	/*
 	 * Protect concurrent access to q_usage_counter by
@@ -986,6 +995,11 @@ extern void blk_put_queue(struct request_queue *);
 
 void blk_mark_disk_dead(struct gendisk *disk);
 
+struct rq_list {
+	struct request *head;
+	struct request *tail;
+};
+
 #ifdef CONFIG_BLOCK
 /*
  * blk_plug permits building a queue of related requests by holding the I/O
@@ -999,10 +1013,10 @@ void blk_mark_disk_dead(struct gendisk *disk);
  * blk_flush_plug() is called.
  */
 struct blk_plug {
-	struct request *mq_list; /* blk-mq requests */
+	struct rq_list mq_list; /* blk-mq requests */
 
 	/* if ios_left is > 1, we can batch tag/rq allocations */
-	struct request *cached_rq;
+	struct rq_list cached_rqs;
 	u64 cur_ktime;
 	unsigned short nr_ios;
 
@@ -1247,7 +1261,7 @@ static inline unsigned int queue_io_min(const struct request_queue *q)
 	return q->limits.io_min;
 }
 
-static inline int bdev_io_min(struct block_device *bdev)
+static inline unsigned int bdev_io_min(struct block_device *bdev)
 {
 	return queue_io_min(bdev_get_queue(bdev));
 }
@@ -1375,6 +1389,9 @@ static inline bool bdev_is_zone_start(struct block_device *bdev,
 {
 	return bdev_offset_from_zone_start(bdev, sector) == 0;
 }
+
+int blk_zone_issue_zeroout(struct block_device *bdev, sector_t sector,
+			   sector_t nr_sects, gfp_t gfp_mask);
 
 static inline int queue_dma_alignment(const struct request_queue *q)
 {
@@ -1648,7 +1665,7 @@ int bdev_thaw(struct block_device *bdev);
 void bdev_fput(struct file *bdev_file);
 
 struct io_comp_batch {
-	struct request *req_list;
+	struct rq_list req_list;
 	bool need_ts;
 	void (*complete)(struct io_comp_batch *);
 };
