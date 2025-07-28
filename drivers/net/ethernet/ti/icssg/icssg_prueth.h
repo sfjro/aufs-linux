@@ -54,7 +54,7 @@
 
 #define ICSSG_MAX_RFLOWS	8	/* per slice */
 
-#define ICSSG_NUM_PA_STATS	4
+#define ICSSG_NUM_PA_STATS	32
 #define ICSSG_NUM_MIIG_STATS	60
 /* Number of ICSSG related stats */
 #define ICSSG_NUM_STATS (ICSSG_NUM_MIIG_STATS + ICSSG_NUM_PA_STATS)
@@ -251,11 +251,13 @@ struct prueth_emac {
  * @fdqring_mode: Free desc queue mode
  * @quirk_10m_link_issue: 10M link detect errata
  * @switch_mode: switch firmware support
+ * @banked_ms_ram: banked memory support
  */
 struct prueth_pdata {
 	enum k3_ring_mode fdqring_mode;
 	u32	quirk_10m_link_issue:1;
 	u32	switch_mode:1;
+	u32	banked_ms_ram:1;
 };
 
 struct icssg_firmwares {

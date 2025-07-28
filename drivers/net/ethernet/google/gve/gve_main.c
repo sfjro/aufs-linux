@@ -268,7 +268,8 @@ static void gve_stats_report_schedule(struct gve_priv *priv)
 
 static void gve_stats_report_timer(struct timer_list *t)
 {
-	struct gve_priv *priv = from_timer(priv, t, stats_report_timer);
+	struct gve_priv *priv = timer_container_of(priv, t,
+						   stats_report_timer);
 
 	mod_timer(&priv->stats_report_timer,
 		  round_jiffies(jiffies +
@@ -1830,7 +1831,7 @@ static void gve_turndown(struct gve_priv *priv)
 	/* Stop tx queues */
 	netif_tx_disable(priv->dev);
 
-	xdp_features_clear_redirect_target(priv->dev);
+	xdp_features_clear_redirect_target_locked(priv->dev);
 
 	gve_clear_napi_enabled(priv);
 	gve_clear_report_stats(priv);
@@ -1902,7 +1903,7 @@ static void gve_turnup(struct gve_priv *priv)
 	}
 
 	if (priv->tx_cfg.num_xdp_queues && gve_supports_xdp_xmit(priv))
-		xdp_features_set_redirect_target(priv->dev, false);
+		xdp_features_set_redirect_target_locked(priv->dev, false);
 
 	gve_set_napi_enabled(priv);
 }
@@ -1916,49 +1917,56 @@ static void gve_turnup_and_check_status(struct gve_priv *priv)
 	gve_handle_link_status(priv, GVE_DEVICE_STATUS_LINK_STATUS_MASK & status);
 }
 
-static void gve_tx_timeout(struct net_device *dev, unsigned int txqueue)
+static struct gve_notify_block *gve_get_tx_notify_block(struct gve_priv *priv,
+							unsigned int txqueue)
 {
-	struct gve_notify_block *block;
-	struct gve_tx_ring *tx = NULL;
-	struct gve_priv *priv;
-	u32 last_nic_done;
-	u32 current_time;
 	u32 ntfy_idx;
 
-	netdev_info(dev, "Timeout on tx queue, %d", txqueue);
-	priv = netdev_priv(dev);
 	if (txqueue > priv->tx_cfg.num_queues)
-		goto reset;
+		return NULL;
 
 	ntfy_idx = gve_tx_idx_to_ntfy(priv, txqueue);
 	if (ntfy_idx >= priv->num_ntfy_blks)
-		goto reset;
+		return NULL;
 
-	block = &priv->ntfy_blocks[ntfy_idx];
-	tx = block->tx;
+	return &priv->ntfy_blocks[ntfy_idx];
+}
+
+static bool gve_tx_timeout_try_q_kick(struct gve_priv *priv,
+				      unsigned int txqueue)
+{
+	struct gve_notify_block *block;
+	u32 current_time;
+
+	block = gve_get_tx_notify_block(priv, txqueue);
+
+	if (!block)
+		return false;
 
 	current_time = jiffies_to_msecs(jiffies);
-	if (tx->last_kick_msec + MIN_TX_TIMEOUT_GAP > current_time)
-		goto reset;
+	if (block->tx->last_kick_msec + MIN_TX_TIMEOUT_GAP > current_time)
+		return false;
 
-	/* Check to see if there are missed completions, which will allow us to
-	 * kick the queue.
-	 */
-	last_nic_done = gve_tx_load_event_counter(priv, tx);
-	if (last_nic_done - tx->done) {
-		netdev_info(dev, "Kicking queue %d", txqueue);
-		iowrite32be(GVE_IRQ_MASK, gve_irq_doorbell(priv, block));
-		napi_schedule(&block->napi);
-		tx->last_kick_msec = current_time;
-		goto out;
-	} // Else reset.
+	netdev_info(priv->dev, "Kicking queue %d", txqueue);
+	napi_schedule(&block->napi);
+	block->tx->last_kick_msec = current_time;
+	return true;
+}
 
-reset:
-	gve_schedule_reset(priv);
+static void gve_tx_timeout(struct net_device *dev, unsigned int txqueue)
+{
+	struct gve_notify_block *block;
+	struct gve_priv *priv;
 
-out:
-	if (tx)
-		tx->queue_timeout++;
+	netdev_info(dev, "Timeout on tx queue, %d", txqueue);
+	priv = netdev_priv(dev);
+
+	if (!gve_tx_timeout_try_q_kick(priv, txqueue))
+		gve_schedule_reset(priv);
+
+	block = gve_get_tx_notify_block(priv, txqueue);
+	if (block)
+		block->tx->queue_timeout++;
 	priv->tx_timeo_cnt++;
 }
 
@@ -2153,7 +2161,7 @@ void gve_handle_report_stats(struct gve_priv *priv)
 			};
 			stats[stats_idx++] = (struct stats) {
 				.stat_name = cpu_to_be32(RX_BUFFERS_POSTED),
-				.value = cpu_to_be64(priv->rx[0].fill_cnt),
+				.value = cpu_to_be64(priv->rx[idx].fill_cnt),
 				.queue_id = cpu_to_be32(idx),
 			};
 		}
@@ -2185,7 +2193,7 @@ static void gve_set_netdev_xdp_features(struct gve_priv *priv)
 		xdp_features = 0;
 	}
 
-	xdp_set_features_flag(priv->dev, xdp_features);
+	xdp_set_features_flag_locked(priv->dev, xdp_features);
 }
 
 static int gve_init_priv(struct gve_priv *priv, bool skip_describe_device)
@@ -2658,6 +2666,9 @@ static int gve_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	err = gve_init_priv(priv, false);
 	if (err)
 		goto abort_with_wq;
+
+	if (!gve_is_gqi(priv) && !gve_is_qpl(priv))
+		dev->netmem_tx = true;
 
 	err = register_netdev(dev);
 	if (err)

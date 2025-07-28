@@ -63,9 +63,9 @@ void iwl_mld_get_bios_tables(struct iwl_mld *mld)
 		/* we don't fail if the table is not available */
 	}
 
-	ret = iwl_uefi_get_uats_table(mld->trans, &mld->fwrt);
-	if (ret)
-		IWL_DEBUG_RADIO(mld, "failed to read UATS table (%d)\n", ret);
+	iwl_uefi_get_uats_table(mld->trans, &mld->fwrt);
+
+	iwl_bios_get_phy_filters(&mld->fwrt);
 }
 
 static int iwl_mld_geo_sar_init(struct iwl_mld *mld)
@@ -251,8 +251,10 @@ void iwl_mld_configure_lari(struct iwl_mld *mld)
 			cpu_to_le32(value &= DSM_UNII4_ALLOW_BITMAP);
 
 	ret = iwl_bios_get_dsm(fwrt, DSM_FUNC_ACTIVATE_CHANNEL, &value);
-	if (!ret)
+	if (!ret) {
+		value &= CHAN_STATE_ACTIVE_BITMAP_CMD_V12;
 		cmd.chan_state_active_bitmap = cpu_to_le32(value);
+	}
 
 	ret = iwl_bios_get_dsm(fwrt, DSM_FUNC_ENABLE_6E, &value);
 	if (!ret)

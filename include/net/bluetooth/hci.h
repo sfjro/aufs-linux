@@ -377,6 +377,8 @@ enum {
 	 * This quirk must be set before hci_register_dev is called.
 	 */
 	HCI_QUIRK_BROKEN_READ_PAGE_SCAN_TYPE,
+
+	__HCI_NUM_QUIRKS,
 };
 
 /* HCI device flags */
@@ -494,6 +496,7 @@ enum {
 #define HCI_EVENT_PKT		0x04
 #define HCI_ISODATA_PKT		0x05
 #define HCI_DIAG_PKT		0xf0
+#define HCI_DRV_PKT		0xf1
 #define HCI_VENDOR_PKT		0xff
 
 /* HCI packet types */
@@ -557,7 +560,8 @@ enum {
 #define ESCO_LINK	0x02
 /* Low Energy links do not have defined link type. Use invented one */
 #define LE_LINK		0x80
-#define ISO_LINK	0x82
+#define CIS_LINK	0x82
+#define BIS_LINK	0x83
 #define INVALID_LINK	0xff
 
 /* LMP features */

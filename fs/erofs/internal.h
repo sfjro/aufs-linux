@@ -44,7 +44,7 @@ struct erofs_device_info {
 	struct erofs_fscache *fscache;
 	struct file *file;
 	struct dax_device *dax_dev;
-	u64 dax_part_off;
+	u64 fsoff, dax_part_off;
 
 	erofs_blk_t blocks;
 	erofs_blk_t uniaddr;
@@ -199,6 +199,7 @@ enum {
 struct erofs_buf {
 	struct address_space *mapping;
 	struct file *file;
+	u64 off;
 	struct page *page;
 	void *base;
 };
@@ -314,9 +315,11 @@ static inline struct folio *erofs_grab_folio_nowait(struct address_space *as,
 /* The length of extent is full */
 #define EROFS_MAP_FULL_MAPPED	0x0008
 /* Located in the special packed inode */
-#define EROFS_MAP_FRAGMENT	0x0010
+#define __EROFS_MAP_FRAGMENT	0x0010
 /* The extent refers to partial decompressed data */
 #define EROFS_MAP_PARTIAL_REF	0x0020
+
+#define EROFS_MAP_FRAGMENT	(EROFS_MAP_MAPPED | __EROFS_MAP_FRAGMENT)
 
 struct erofs_map_blocks {
 	struct erofs_buf buf;
@@ -389,7 +392,7 @@ int erofs_fiemap(struct inode *inode, struct fiemap_extent_info *fieinfo,
 int erofs_map_blocks(struct inode *inode, struct erofs_map_blocks *map);
 void erofs_onlinefolio_init(struct folio *folio);
 void erofs_onlinefolio_split(struct folio *folio);
-void erofs_onlinefolio_end(struct folio *folio, int err);
+void erofs_onlinefolio_end(struct folio *folio, int err, bool dirty);
 struct inode *erofs_iget(struct super_block *sb, erofs_nid_t nid);
 int erofs_getattr(struct mnt_idmap *idmap, const struct path *path,
 		  struct kstat *stat, u32 request_mask,

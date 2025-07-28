@@ -273,8 +273,6 @@ static int io_poll_check_events(struct io_kiocb *req, io_tw_token_t tw)
 				return IOU_POLL_REISSUE;
 			}
 		}
-		if (unlikely(req->cqe.res & EPOLLERR))
-			req_set_fail(req);
 		if (req->apoll_events & EPOLLONESHOT)
 			return IOU_POLL_DONE;
 
@@ -893,7 +891,7 @@ int io_poll_add(struct io_kiocb *req, unsigned int issue_flags)
 	ret = __io_arm_poll_handler(req, poll, &ipt, poll->events, issue_flags);
 	if (ret > 0) {
 		io_req_set_res(req, ipt.result_mask, 0);
-		return IOU_OK;
+		return IOU_COMPLETE;
 	}
 	return ret ?: IOU_ISSUE_SKIP_COMPLETE;
 }
@@ -948,5 +946,5 @@ out:
 	}
 	/* complete update request, we're done with it */
 	io_req_set_res(req, ret, 0);
-	return IOU_OK;
+	return IOU_COMPLETE;
 }

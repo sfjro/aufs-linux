@@ -1371,7 +1371,7 @@ static int netvsc_set_mac_addr(struct net_device *ndev, void *p)
 	struct net_device_context *ndc = netdev_priv(ndev);
 	struct net_device *vf_netdev = rtnl_dereference(ndc->vf_netdev);
 	struct netvsc_device *nvdev = rtnl_dereference(ndc->nvdev);
-	struct sockaddr *addr = p;
+	struct sockaddr_storage *addr = p;
 	int err;
 
 	err = eth_prepare_mac_addr_change(ndev, p);
@@ -1387,12 +1387,12 @@ static int netvsc_set_mac_addr(struct net_device *ndev, void *p)
 			return err;
 	}
 
-	err = rndis_filter_set_device_mac(nvdev, addr->sa_data);
+	err = rndis_filter_set_device_mac(nvdev, addr->__data);
 	if (!err) {
 		eth_commit_mac_addr_change(ndev, p);
 	} else if (vf_netdev) {
 		/* rollback change on VF */
-		memcpy(addr->sa_data, ndev->dev_addr, ETH_ALEN);
+		memcpy(addr->__data, ndev->dev_addr, ETH_ALEN);
 		dev_set_mac_address(vf_netdev, addr, NULL);
 	}
 
@@ -2317,8 +2317,11 @@ static int netvsc_prepare_bonding(struct net_device *vf_netdev)
 	if (!ndev)
 		return NOTIFY_DONE;
 
-	/* set slave flag before open to prevent IPv6 addrconf */
+	/* Set slave flag and no addrconf flag before open
+	 * to prevent IPv6 addrconf.
+	 */
 	vf_netdev->flags |= IFF_SLAVE;
+	vf_netdev->priv_flags |= IFF_NO_ADDRCONF;
 	return NOTIFY_DONE;
 }
 
@@ -2461,8 +2464,6 @@ static int netvsc_unregister_vf(struct net_device *vf_netdev)
 	cancel_delayed_work_sync(&net_device_ctx->vf_takeover);
 
 	netdev_info(ndev, "VF unregistering: %s\n", vf_netdev->name);
-
-	netvsc_vf_setxdp(vf_netdev, NULL);
 
 	reinit_completion(&net_device_ctx->vf_add);
 	netdev_rx_handler_unregister(vf_netdev);
@@ -2631,7 +2632,9 @@ static int netvsc_probe(struct hv_device *dev,
 			continue;
 
 		netvsc_prepare_bonding(vf_netdev);
+		netdev_lock_ops(vf_netdev);
 		netvsc_register_vf(vf_netdev, VF_REG_IN_PROBE);
+		netdev_unlock_ops(vf_netdev);
 		__netvsc_vf_setup(net, vf_netdev);
 		break;
 	}

@@ -211,7 +211,7 @@ static int find_sdca_init_table(struct device *dev,
 	} else if (num_init_writes % sizeof(*raw) != 0) {
 		dev_err(dev, "%pfwP: init table size invalid\n", function_node);
 		return -EINVAL;
-	} else if (num_init_writes > SDCA_MAX_INIT_COUNT) {
+	} else if ((num_init_writes / sizeof(*raw)) > SDCA_MAX_INIT_COUNT) {
 		dev_err(dev, "%pfwP: maximum init table size exceeded\n", function_node);
 		return -EINVAL;
 	}
@@ -1105,12 +1105,6 @@ static int find_sdca_entity_pde(struct device *dev,
 		return -EINVAL;
 	}
 
-	/* There are 3 values per delay */
-	delays = devm_kcalloc(dev, num_delays / mult_delay,
-			      sizeof(*delays), GFP_KERNEL);
-	if (!delays)
-		return -ENOMEM;
-
 	delay_list = kcalloc(num_delays, sizeof(*delay_list), GFP_KERNEL);
 	if (!delay_list)
 		return -ENOMEM;
@@ -1120,6 +1114,10 @@ static int find_sdca_entity_pde(struct device *dev,
 				       delay_list, num_delays);
 
 	num_delays /= mult_delay;
+
+	delays = devm_kcalloc(dev, num_delays, sizeof(*delays), GFP_KERNEL);
+	if (!delays)
+		return -ENOMEM;
 
 	for (i = 0, j = 0; i < num_delays; i++) {
 		delays[i].from_ps = delay_list[j++];

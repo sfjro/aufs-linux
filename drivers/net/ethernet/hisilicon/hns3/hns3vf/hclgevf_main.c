@@ -2057,7 +2057,7 @@ static enum hclgevf_evt_cause hclgevf_check_evt_cause(struct hclgevf_dev *hdev,
 
 static void hclgevf_reset_timer(struct timer_list *t)
 {
-	struct hclgevf_dev *hdev = from_timer(hdev, t, reset_timer);
+	struct hclgevf_dev *hdev = timer_container_of(hdev, t, reset_timer);
 
 	hclgevf_clear_event_cause(hdev, HCLGEVF_VECTOR0_EVENT_RST);
 	hclgevf_reset_task_schedule(hdev);
@@ -3094,11 +3094,7 @@ static void hclgevf_uninit_ae_dev(struct hnae3_ae_dev *ae_dev)
 
 static u32 hclgevf_get_max_channels(struct hclgevf_dev *hdev)
 {
-	struct hnae3_handle *nic = &hdev->nic;
-	struct hnae3_knic_private_info *kinfo = &nic->kinfo;
-
-	return min_t(u32, hdev->rss_size_max,
-		     hdev->num_tqps / kinfo->tc_info.num_tc);
+	return min(hdev->rss_size_max, hdev->num_tqps);
 }
 
 /**
