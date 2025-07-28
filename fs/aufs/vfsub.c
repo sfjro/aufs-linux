@@ -206,7 +206,8 @@ struct dentry *vfsub_lookup_one_len_unlocked(const char *name,
 {
 	struct path path;
 
-	path.dentry = lookup_one_len_unlocked(name, ppath->dentry, len);
+	path.dentry = lookup_noperm_unlocked(&QSTR_LEN(name, len),
+					     ppath->dentry);
 	if (IS_ERR(path.dentry))
 		goto out;
 	if (d_is_positive(path.dentry)) {
@@ -227,7 +228,7 @@ struct dentry *vfsub_lookup_one_len(const char *name, struct path *ppath,
 	/* VFS checks it too, but by WARN_ON_ONCE() */
 	IMustLock(d_inode(ppath->dentry));
 
-	path.dentry = lookup_one_len(name, ppath->dentry, len);
+	path.dentry = lookup_noperm(&QSTR_LEN(name, len), ppath->dentry);
 	if (IS_ERR(path.dentry))
 		goto out;
 	if (d_is_positive(path.dentry)) {
