@@ -379,7 +379,7 @@ again:
 		if (vp->file) {
 			uprobe_munmap(vp->remove, vp->remove->vm_start,
 				      vp->remove->vm_end);
-			vma_fput(vp->vma);
+			fput(vp->file);
 		}
 		if (vp->remove->anon_vma)
 			anon_vma_merge(vp->vma, vp->remove);
@@ -463,7 +463,7 @@ void remove_vma(struct vm_area_struct *vma)
 	might_sleep();
 	vma_close(vma);
 	if (vma->vm_file)
-		vma_fput(vma);
+		fput(vma->vm_file);
 	mpol_put(vma_policy(vma));
 	vm_area_free(vma);
 }
@@ -537,7 +537,7 @@ __split_vma(struct vma_iterator *vmi, struct vm_area_struct *vma,
 		goto out_free_mpol;
 
 	if (new->vm_file)
-		vma_get_file(new);
+		get_file(new->vm_file);
 
 	if (new->vm_ops && new->vm_ops->open)
 		new->vm_ops->open(new);
@@ -1874,7 +1874,7 @@ struct vm_area_struct *copy_vma(struct vm_area_struct **vmap,
 		if (anon_vma_clone(new_vma, vma))
 			goto out_free_mempol;
 		if (new_vma->vm_file)
-			vma_get_file(new_vma);
+			get_file(new_vma->vm_file);
 		if (new_vma->vm_ops && new_vma->vm_ops->open)
 			new_vma->vm_ops->open(new_vma);
 		if (vma_link(mm, new_vma))
@@ -1888,7 +1888,7 @@ out_vma_link:
 	vma_close(new_vma);
 
 	if (new_vma->vm_file)
-		vma_fput(new_vma);
+		fput(new_vma->vm_file);
 
 	unlink_anon_vmas(new_vma);
 out_free_mempol:

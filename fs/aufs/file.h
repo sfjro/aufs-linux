@@ -48,6 +48,7 @@ struct au_finfo {
 	struct {				/* for non-dir */
 		struct au_hfile			fi_htop;
 		atomic_t			fi_mmapped;
+		struct hlist_bl_node		fi_mf;
 	};
 	struct au_fidir		*fi_hdir;	/* for dir only */
 
@@ -102,6 +103,16 @@ extern const struct file_operations aufs_file_fop;
 int au_do_open_nondir(struct file *file, int flags, struct file *h_file);
 int aufs_release_nondir(struct inode *inode __maybe_unused, struct file *file);
 struct file *au_read_pre(struct file *file, int keep_fi, unsigned int lsc);
+
+/* mf.c */
+void au_mf_add(struct file *h_file, struct file *file);
+void au_mf_del(struct file *h_file, struct file *file);
+#if IS_MODULE(CONFIG_AUFS_FS)
+const struct path *au_do_file_user_path(struct file *h_file);
+const struct inode *au_do_file_user_inode(struct file *h_file);
+#elif IS_BUILTIN(CONFIG_AUFS_FS)
+/* declared in include/linux/fs.h */
+#endif
 
 /* finfo.c */
 void au_hfput(struct au_hfile *hf, int execed);
@@ -276,25 +287,13 @@ static inline int au_test_mmapped(struct file *f)
 }
 
 /* customize vma->vm_file */
-
-static inline void au_do_vm_file_reset(struct vm_area_struct *vma,
-				       struct file *file)
-{
-	struct file *f;
-
-	f = vma->vm_file;
-	get_file(file);
-	vma->vm_file = file;
-	fput(f);
-}
-
 #ifdef CONFIG_MMU
 AuStubVoid(AuDbgVmRegion, struct file *file, struct vm_area_struct *vma)
 
 static inline void au_vm_file_reset(struct vm_area_struct *vma,
 				    struct file *file)
 {
-	au_do_vm_file_reset(vma, file);
+	vma_set_file(vma, file);
 }
 #else
 #define AuDbgVmRegion(file, vma) \
@@ -303,27 +302,13 @@ static inline void au_vm_file_reset(struct vm_area_struct *vma,
 static inline void au_vm_file_reset(struct vm_area_struct *vma,
 				    struct file *file)
 {
-	struct file *f;
+	vma_set_file(vma, file);
 
-	au_do_vm_file_reset(vma, file);
-	f = vma->vm_region->vm_file;
 	get_file(file);
-	vma->vm_region->vm_file = file;
-	fput(f);
+	swap(vma->vm_region->vm_file, file);
+	fput(file);
 }
 #endif /* CONFIG_MMU */
-
-/* handle vma->vm_prfile */
-static inline void au_vm_prfile_set(struct vm_area_struct *vma,
-				    struct file *file)
-{
-	get_file(file);
-	vma->vm_prfile = file;
-#ifndef CONFIG_MMU
-	get_file(file);
-	vma->vm_region->vm_prfile = file;
-#endif
-}
 
 #endif /* __KERNEL__ */
 #endif /* __AUFS_FILE_H__ */
