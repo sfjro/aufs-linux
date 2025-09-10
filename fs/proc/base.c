@@ -1785,8 +1785,8 @@ static int proc_exe_link(struct dentry *dentry, struct path *exe_path)
 	exe_file = get_task_exe_file(task);
 	put_task_struct(task);
 	if (exe_file) {
-		*exe_path = exe_file->f_path;
-		path_get(&exe_file->f_path);
+		*exe_path = *file_user_path(exe_file);
+		path_get(exe_path);
 		fput(exe_file);
 		return 0;
 	} else
@@ -2271,7 +2271,7 @@ static int map_files_get_link(struct dentry *dentry, struct path *path)
 	rc = -ENOENT;
 	vma = find_exact_vma(mm, vm_start, vm_end);
 	if (vma && vma->vm_file) {
-		*path = vma_pr_or_file(vma)->f_path;
+		*path = *file_user_path(vma->vm_file);
 		path_get(path);
 		rc = 0;
 	}
