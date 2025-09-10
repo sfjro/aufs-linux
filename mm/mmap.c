@@ -1098,7 +1098,6 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 	unsigned long ret = -EINVAL;
 	struct file *file;
 	vm_flags_t vm_flags;
-	struct file *prfile = NULL; /* aufs */
 
 	pr_warn_once("%s (%d) uses deprecated remap_file_pages() syscall. See Documentation/mm/remap_file_pages.rst.\n",
 		     current->comm, current->pid);
@@ -1141,16 +1140,14 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 
 	/* Save vm_flags used to calculate prot and flags, and recheck later. */
 	vm_flags = vma->vm_flags;
-	vma_get_file(vma);
-	file = vma->vm_file;
-	prfile = vma_prfile_value(vma);
+	file = get_file(vma->vm_file);
 
 	mmap_read_unlock(mm);
 
 	/* Call outside mmap_lock to be consistent with other callers. */
 	ret = security_mmap_file(file, prot, flags);
 	if (ret) {
-		vma_fput(vma);
+		fput(file);
 		return ret;
 	}
 
@@ -1158,7 +1155,7 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 
 	/* OK security check passed, take write lock + let it rip. */
 	if (mmap_write_lock_killable(mm)) {
-		vma_fput(vma);
+		fput(file);
 		return -EINTR;
 	}
 
@@ -1200,27 +1197,9 @@ SYSCALL_DEFINE5(remap_file_pages, unsigned long, start, unsigned long, size,
 
 	ret = do_mmap(vma->vm_file, start, size,
 			prot, flags, 0, pgoff, &populate, NULL);
-#if IS_ENABLED(CONFIG_AUFS_FS)
-	if (!IS_ERR_VALUE(ret) && file && prfile) {
-		struct vm_area_struct *new_vma;
-
-		new_vma = find_vma(mm, ret);
-		if (!vma_prfile_value(new_vma))
-			vma_prfile_set(new_vma, prfile);
-		if (prfile)
-			get_file(prfile);
-	}
-#endif
-
 out:
 	mmap_write_unlock(mm);
-	/*
-	 * two fput()s instead of vma_fput(vma),
-	 * coz vma may not be available anymore.
-	 */
 	fput(file);
-	if (prfile)
-		fput(prfile);
 	if (populate)
 		mm_populate(ret, populate);
 	if (!IS_ERR_VALUE(ret))
