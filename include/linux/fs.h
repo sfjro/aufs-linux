@@ -2885,12 +2885,12 @@ struct path *backing_file_user_path(const struct file *f);
 
 #if IS_MODULE(CONFIG_AUFS_FS)
 /* fs/au_mf.c */
-const struct path *au_file_user_path(struct file *f);
-const struct inode *au_file_user_inode(struct file *f);
+const struct path *au_file_user_path(const struct file *f);
+const struct inode *au_file_user_inode(const struct file *f);
 #elif IS_BUILTIN(CONFIG_AUFS_FS)
 /* fs/aufs/mf.c */
-const struct path *au_do_file_user_path(struct file *f);
-const struct inode *au_do_file_user_inode(struct file *f);
+const struct path *au_do_file_user_path(const struct file *f);
+const struct inode *au_do_file_user_inode(const struct file *f);
 #define au_file_user_path(f)	au_do_file_user_path(f)
 #define au_file_user_inode(f)	au_do_file_user_inode(f)
 #else

@@ -15,11 +15,11 @@
 BUILD_BUG_ON_MSG(1, "CONFIG_AUFS_FS is disabled.");
 #endif
 
-const struct path *au_file_user_path(struct file *f)
+const struct path *au_file_user_path(const struct file *f)
 {
 	const struct path *path,
-		*(*func)(struct file *f),
-		*au_do_file_user_path(struct file *f);
+		*(*func)(const struct file *f),
+		*au_do_file_user_path(const struct file *f);
 
 	path = NULL;
 	func = symbol_get(au_do_file_user_path);
@@ -35,11 +35,11 @@ out:
 }
 EXPORT_SYMBOL_GPL(au_file_user_path);
 
-const struct inode *au_file_user_inode(struct file *f)
+const struct inode *au_file_user_inode(const struct file *f)
 {
 	const struct inode *inode,
-		*(*func)(struct file *f),
-		*au_do_file_user_inode(struct file *f);
+		*(*func)(const struct file *f),
+		*au_do_file_user_inode(const struct file *f);
 
 	inode = NULL;
 	func = symbol_get(au_do_file_user_inode);
