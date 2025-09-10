@@ -33,6 +33,7 @@ const struct path *au_file_user_path(struct file *f)
 out:
 	return path;
 }
+EXPORT_SYMBOL_GPL(au_file_user_path);
 
 const struct inode *au_file_user_inode(struct file *f)
 {
@@ -52,3 +53,4 @@ const struct inode *au_file_user_inode(struct file *f)
 out:
 	return inode;
 }
+EXPORT_SYMBOL_GPL(au_file_user_inode);
