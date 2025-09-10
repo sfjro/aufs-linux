@@ -264,8 +264,7 @@ static void get_vma_name(struct vm_area_struct *vma,
 			*name_fmt = "[anon_shmem:%s]";
 			*name = anon_name->name;
 		} else {
-			struct file *f = vma_pr_or_file(vma);
-			*path = file_user_path(f);
+			*path = file_user_path(vma->vm_file);
 		}
 		return;
 	}
@@ -335,7 +334,7 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
 
 	if (vma->vm_file) {
 		const struct inode *inode
-			= file_inode(vma_pr_or_file(vma));
+			= file_inode(file = vma_pr_or_file(vma));
 
 		dev = inode->i_sb->s_dev;
 		ino = inode->i_ino;
