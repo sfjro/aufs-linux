@@ -333,8 +333,7 @@ show_map_vma(struct seq_file *m, struct vm_area_struct *vma)
 	dev_t dev = 0;
 
 	if (vma->vm_file) {
-		const struct inode *inode
-			= file_inode(file = vma_pr_or_file(vma));
+		const struct inode *inode = file_user_inode(vma->vm_file);
 
 		dev = inode->i_sb->s_dev;
 		ino = inode->i_ino;
@@ -3009,7 +3008,7 @@ static int show_numa_map(struct seq_file *m, void *v)
 	struct proc_maps_private *proc_priv = &numa_priv->proc_maps;
 	struct vm_area_struct *vma = v;
 	struct numa_maps *md = &numa_priv->md;
-	struct file *file = vma_pr_or_file(vma);
+	struct file *file = vma->vm_file;
 	struct mm_struct *mm = vma->vm_mm;
 	char buffer[64];
 	struct mempolicy *pol;
