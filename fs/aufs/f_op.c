@@ -553,6 +553,52 @@ out:
 
 /* ---------------------------------------------------------------------- */
 
+/* called befrore aufs_mmap() */
+static unsigned long
+aufs_get_unmapped_area(struct file *file, unsigned long addr,
+		       unsigned long len, unsigned long pgoff,
+		       unsigned long flags)
+{
+	unsigned long ul;
+	const unsigned char wlock = !!(file->f_mode & FMODE_WRITE);
+	struct inode *inode;
+	struct super_block *sb;
+	struct file *h_file;
+	unsigned long (*guma)(struct file *file, unsigned long addr,
+			      unsigned long len, unsigned long pgoff,
+			      unsigned long flags);
+
+	inode = file_inode(file);
+	sb = inode->i_sb;
+	lockdep_off();
+	si_read_lock(sb, AuLock_NOPLMW);
+
+	h_file = au_write_pre(file, /*do_ready*/wlock, /*wpre*/NULL);
+	lockdep_on();
+	ul = PTR_ERR(h_file);
+	if (IS_ERR(h_file))
+		goto out;
+
+	guma = h_file->f_op->get_unmapped_area;
+	if (!guma)
+		ul = mm_get_unmapped_area(current->mm, h_file, addr, len, pgoff,
+					  flags);
+	else
+		ul = guma(h_file, addr, len, pgoff, flags);
+
+	lockdep_off();
+	ii_write_unlock(inode);
+	lockdep_on();
+	fput(h_file);
+
+out:
+	lockdep_off();
+	si_read_unlock(sb);
+	lockdep_on();
+	AuTraceErr(ul);
+	return ul;
+}
+
 /*
  * The locking order around current->mmap_sem.
  * - in most and regular cases
@@ -766,6 +812,7 @@ const struct file_operations aufs_file_fop = {
 	.release	= aufs_release_nondir,
 	.fsync		= aufs_fsync_nondir,
 	.fasync		= aufs_fasync,
+	.get_unmapped_area = aufs_get_unmapped_area,
 	.setfl		= aufs_setfl,
 	.splice_write	= aufs_splice_write,
 	.splice_read	= aufs_splice_read,
