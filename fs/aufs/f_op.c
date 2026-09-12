@@ -581,10 +581,8 @@ aufs_get_unmapped_area(struct file *file, unsigned long addr,
 
 	guma = h_file->f_op->get_unmapped_area;
 	if (!guma)
-		ul = mm_get_unmapped_area(current->mm, h_file, addr, len, pgoff,
-					  flags);
-	else
-		ul = guma(h_file, addr, len, pgoff, flags);
+		guma = mm_get_unmapped_area;
+	ul = guma(h_file, addr, len, pgoff, flags);
 
 	lockdep_off();
 	ii_write_unlock(inode);
