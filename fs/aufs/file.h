@@ -312,10 +312,9 @@ static inline void au_vm_file_reset(struct vm_area_struct *vma,
 
 #ifndef CONFIG_MMU
 static inline unsigned long
-mm_get_unmapped_area_vmflags(struct mm_struct *mm, struct file *filp,
-			     unsigned long addr, unsigned long len,
-			     unsigned long pgoff, unsigned long flags,
-			     vm_flags_t vm_flags)
+mm_get_unmapped_area_vmflags(struct file *filp, unsigned long addr,
+			     unsigned long len, unsigned long pgoff,
+			     unsigned long flags, vm_flags_t vm_flags)
 {
 	return addr;
 }
