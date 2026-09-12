@@ -310,5 +310,15 @@ static inline void au_vm_file_reset(struct vm_area_struct *vma,
 }
 #endif /* CONFIG_MMU */
 
+#ifndef CONFIG_MMU
+static inline unsigned long
+mm_get_unmapped_area_vmflags(struct file *filp, unsigned long addr,
+			     unsigned long len, unsigned long pgoff,
+			     unsigned long flags, vm_flags_t vm_flags)
+{
+	return addr;
+}
+#endif
+
 #endif /* __KERNEL__ */
 #endif /* __AUFS_FILE_H__ */
