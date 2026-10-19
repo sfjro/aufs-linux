@@ -898,10 +898,10 @@ static int nxp_fspi_select_mem(struct nxp_fspi *f, struct spi_device *spi,
 	dev_dbg(f->dev, "Target device [CS:%x] selected\n", spi_get_chipselect(spi, 0));
 
 	/*
-	 * Per the FlexSPI reference manual (initialization sequence), MCR0 and
-	 * the DLL control registers should be configured while the module is in
-	 * stop mode (MCR0[MDIS] = 1). Enter stop mode before reconfiguring the
-	 * RX sample clock source and the DLL, then exit stop mode afterwards.
+	 * Per the FlexSPI reference manual (initialization sequence), MCR0
+	 * should be configured while the module is in stop mode (MCR0[MDIS] = 1).
+	 * Enter stop mode before reconfiguring the RX sample clock source, then
+	 * exit stop mode afterwards.
 	 */
 	reg = fspi_readl(f, f->iobase + FSPI_MCR0);
 	fspi_writel(f, reg | FSPI_MCR0_MDIS, f->iobase + FSPI_MCR0);
@@ -937,6 +937,16 @@ static int nxp_fspi_select_mem(struct nxp_fspi *f, struct spi_device *spi,
 		return ret;
 
 	/*
+	 * Exit stop mode before running the DLL calibration. The DLL
+	 * reference clock is derived from the module clock domain, which is
+	 * gated while MCR0[MDIS] = 1. Calibrating the DLL in stop mode leaves
+	 * the STS2 lock bits stuck at 0 (the DLL never runs), so clear MDIS
+	 * first and let the module and reference clock run.
+	 */
+	reg = fspi_readl(f, f->iobase + FSPI_MCR0);
+	fspi_writel(f, reg & ~FSPI_MCR0_MDIS, f->iobase + FSPI_MCR0);
+
+	/*
 	 * If clock rate > 100MHz, then switch from DLL override mode to
 	 * DLL calibration mode.
 	 */
@@ -944,10 +954,6 @@ static int nxp_fspi_select_mem(struct nxp_fspi *f, struct spi_device *spi,
 		nxp_fspi_dll_calibration(f);
 	else
 		nxp_fspi_dll_override(f);
-
-	/* Exit stop mode now that MCR0 and the DLL have been reconfigured. */
-	reg = fspi_readl(f, f->iobase + FSPI_MCR0);
-	fspi_writel(f, reg & ~FSPI_MCR0_MDIS, f->iobase + FSPI_MCR0);
 
 	f->pre_op_rate = op->max_freq;
 
@@ -1458,9 +1464,11 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 	pm_runtime_use_autosuspend(dev);
 
 	/* enable clock */
-	ret = pm_runtime_get_sync(f->dev);
-	if (ret < 0)
-		return dev_err_probe(dev, ret, "Failed to enable clock");
+	ret = pm_runtime_resume_and_get(f->dev);
+	if (ret < 0) {
+		ret = dev_err_probe(dev, ret, "Failed to enable clock");
+		goto err_disable_pm;
+	}
 
 	/* Clear potential interrupts */
 	reg = fspi_readl(f, f->iobase + FSPI_INTR);
@@ -1470,18 +1478,24 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 	nxp_fspi_default_setup(f);
 
 	ret = pm_runtime_put_sync(dev);
-	if (ret < 0)
-		return dev_err_probe(dev, ret, "Failed to disable clock");
+	if (ret < 0) {
+		ret = dev_err_probe(dev, ret, "Failed to disable clock");
+		goto err_disable_pm;
+	}
 
 	init_completion(&f->c);
 	ret = devm_request_irq(dev, irq,
 			nxp_fspi_irq_handler, 0, pdev->name, f);
-	if (ret)
-		return dev_err_probe(dev, ret, "Failed to request irq\n");
+	if (ret) {
+		ret = dev_err_probe(dev, ret, "Failed to request irq\n");
+		goto err_disable_pm;
+	}
 
 	ret = devm_mutex_init(dev, &f->lock);
-	if (ret)
-		return dev_err_probe(dev, ret, "Failed to initialize lock\n");
+	if (ret) {
+		ret = dev_err_probe(dev, ret, "Failed to initialize lock\n");
+		goto err_disable_pm;
+	}
 
 	ctlr->bus_num = -1;
 	ctlr->num_chipselect = NXP_FSPI_MAX_CHIPSELECT;
@@ -1497,6 +1511,11 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 		return ret;
 
 	return devm_spi_register_controller(&pdev->dev, ctlr);
+
+err_disable_pm:
+	pm_runtime_dont_use_autosuspend(dev);
+	pm_runtime_disable(dev);
+	return ret;
 }
 
 static int nxp_fspi_runtime_suspend(struct device *dev)

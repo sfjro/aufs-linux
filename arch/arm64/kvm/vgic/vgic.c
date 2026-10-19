@@ -93,8 +93,9 @@ struct vgic_irq *vgic_get_irq(struct kvm *kvm, u32 intid)
 	/* SPIs */
 	if (intid >= VGIC_NR_PRIVATE_IRQS &&
 	    intid < (kvm->arch.vgic.nr_spis + VGIC_NR_PRIVATE_IRQS)) {
-		intid = array_index_nospec(intid, kvm->arch.vgic.nr_spis + VGIC_NR_PRIVATE_IRQS);
-		return &kvm->arch.vgic.spis[intid - VGIC_NR_PRIVATE_IRQS];
+		intid -= VGIC_NR_PRIVATE_IRQS;
+		intid = array_index_nospec(intid, kvm->arch.vgic.nr_spis);
+		return &kvm->arch.vgic.spis[intid];
 	}
 
 	/* LPIs */
@@ -117,6 +118,8 @@ struct vgic_irq *vgic_get_vcpu_irq(struct kvm_vcpu *vcpu, u32 intid)
 		switch (type) {
 		case KVM_DEV_TYPE_ARM_VGIC_V5:
 			intid = vgic_v5_get_hwirq_id(intid);
+			if (intid >= VGIC_V5_NR_PRIVATE_IRQS)
+				return NULL;
 			intid = array_index_nospec(intid, VGIC_V5_NR_PRIVATE_IRQS);
 			break;
 		default:
@@ -850,6 +853,17 @@ retry:
 		goto retry;
 	}
 
+	/*
+	 * Fix the last_lr_irq refcount which was obtained while
+	 * populating the LRs. This can also result in the LPI being
+	 * deleted.
+	 */
+	irq = *host_data_ptr(last_lr_irq);
+	if (irq) {
+		deleted_lpis |= vgic_put_irq_norelease(vcpu->kvm, irq);
+		*host_data_ptr(last_lr_irq) = NULL;
+	}
+
 	raw_spin_unlock(&vgic_cpu->ap_list_lock);
 
 	if (unlikely(deleted_lpis))
@@ -862,9 +876,6 @@ static void vgic_fold_state(struct kvm_vcpu *vcpu)
 		vgic_v5_fold_ppi_state(vcpu);
 		return;
 	}
-
-	if (!*host_data_ptr(last_lr_irq))
-		return;
 
 	if (kvm_vgic_global_state.type == VGIC_V2)
 		vgic_v2_fold_lr_state(vcpu);
@@ -1018,11 +1029,14 @@ static void vgic_flush_lr_state(struct kvm_vcpu *vcpu)
 		scoped_guard(raw_spinlock,  &irq->irq_lock) {
 			if (likely(vgic_target_oracle(irq) == vcpu)) {
 				vgic_populate_lr(vcpu, irq, count++);
-				*host_data_ptr(last_lr_irq) = irq;
+				if (count == kvm_vgic_global_state.nr_lr) {
+					vgic_get_irq_ref(irq);
+					*host_data_ptr(last_lr_irq) = irq;
+				}
 			}
 		}
 
-		if (count == kvm_vgic_global_state.nr_lr)
+		if (*host_data_ptr(last_lr_irq))
 			break;
 	}
 

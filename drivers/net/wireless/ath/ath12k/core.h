@@ -15,7 +15,6 @@
 #include <linux/ctype.h>
 #include <linux/firmware.h>
 #include <linux/of_reserved_mem.h>
-#include <linux/panic_notifier.h>
 #include <linux/average.h>
 #include <linux/of.h>
 #include <linux/rhashtable.h>
@@ -159,14 +158,6 @@ enum ath12k_hw_rev {
 	ATH12K_HW_IPQ5332_HW10,
 	ATH12K_HW_QCC2072_HW10,
 	ATH12K_HW_IPQ5424_HW10,
-};
-
-enum ath12k_firmware_mode {
-	/* the default mode, standard 802.11 functionality */
-	ATH12K_FIRMWARE_MODE_NORMAL,
-
-	/* factory tests etc */
-	ATH12K_FIRMWARE_MODE_FTM,
 };
 
 #define ATH12K_IRQ_NUM_MAX 57
@@ -666,7 +657,8 @@ struct ath12k {
 
 	/* protects the radio specific data like debug stats, ppdu_stats_info stats,
 	 * vdev_stop_status info, scan data, ath12k_sta info, ath12k_link_vif info,
-	 * channel context data, survey info, test mode data, regd_channel_update_queue.
+	 * channel context data, test mode data, regd_channel_update_queue,
+	 * peer_delete_waits.
 	 */
 	spinlock_t data_lock;
 
@@ -688,7 +680,7 @@ struct ath12k {
 	u8 radio_idx;
 
 	struct completion peer_assoc_done;
-	struct completion peer_delete_done;
+	struct list_head peer_delete_waits;
 
 	int install_key_status;
 	struct completion install_key_done;
@@ -722,7 +714,6 @@ struct ath12k {
 	 * avoid reporting garbage data.
 	 */
 	bool ch_info_can_report_survey;
-	struct survey_info survey[ATH12K_NUM_CHANS];
 	struct completion bss_survey_done;
 
 	struct work_struct regd_update_work;
@@ -792,6 +783,11 @@ struct ath12k_hw {
 	 */
 	struct mutex hw_mutex;
 	enum ath12k_hw_state state;
+
+	/* protects survey[] shared across radios of this hw. */
+	spinlock_t survey_lock;
+	struct survey_info survey[ATH12K_NUM_CHANS];
+
 	bool regd_updated;
 	bool use_6ghz_regd;
 	bool host_alloc_ml_id;
@@ -937,6 +933,7 @@ struct ath12k_dp_profile_params {
 	u32 rxdma_monitor_dst_ring_size;
 	u32 num_pool_tx_desc;
 	u32 rx_desc_count;
+	u32 rx_release_ring_size;
 };
 
 struct ath12k_mem_profile_based_param {
@@ -1141,11 +1138,9 @@ struct ath12k_base {
 
 #endif /* CONFIG_ACPI */
 
-	struct notifier_block panic_nb;
-
 	struct ath12k_hw_group *ag;
 	struct ath12k_wsi_info wsi_info;
-	enum ath12k_firmware_mode fw_mode;
+	enum ath12k_qmi_firmware_mode fw_mode;
 	struct ath12k_ftm_event_obj ftm_event_obj;
 	bool hw_group_ref;
 
@@ -1297,8 +1292,6 @@ void ath12k_fw_stats_init(struct ath12k *ar);
 void ath12k_fw_stats_bcn_free(struct list_head *head);
 void ath12k_fw_stats_free(struct ath12k_fw_stats *stats);
 void ath12k_fw_stats_reset(struct ath12k *ar);
-struct reserved_mem *ath12k_core_get_reserved_mem(struct ath12k_base *ab,
-						  int index);
 enum ath12k_qmi_mem_mode ath12k_core_get_memory_mode(struct ath12k_base *ab);
 
 static inline const char *ath12k_scan_state_str(enum ath12k_scan_state state)
