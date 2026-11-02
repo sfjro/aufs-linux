@@ -84,7 +84,7 @@ int au_may_del(struct dentry *dentry, aufs_bindex_t bindex,
 	struct path h_ppath;
 	struct super_block *sb;
 	struct au_branch *br;
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 
 	h_dentry = au_h_dptr(dentry, bindex);
 	if (d_really_is_positive(dentry)) {

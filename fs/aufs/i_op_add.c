@@ -349,7 +349,7 @@ out:
 	return err;
 }
 
-int aufs_mknod(struct mnt_idmap *idmap, struct inode *dir,
+int aufs_mknod(const struct mnt_idmap *idmap, struct inode *dir,
 	       struct dentry *dentry, umode_t mode, dev_t dev)
 {
 	struct simple_arg arg = {
@@ -362,7 +362,7 @@ int aufs_mknod(struct mnt_idmap *idmap, struct inode *dir,
 	return add_simple(dir, dentry, &arg);
 }
 
-int aufs_symlink(struct mnt_idmap *idmap, struct inode *dir,
+int aufs_symlink(const struct mnt_idmap *idmap, struct inode *dir,
 		 struct dentry *dentry, const char *symname)
 {
 	struct simple_arg arg = {
@@ -372,7 +372,7 @@ int aufs_symlink(struct mnt_idmap *idmap, struct inode *dir,
 	return add_simple(dir, dentry, &arg);
 }
 
-int aufs_create(struct mnt_idmap *idmap, struct inode *dir,
+int aufs_create(const struct mnt_idmap *idmap, struct inode *dir,
 		struct dentry *dentry, umode_t mode)
 {
 	struct simple_arg arg = {
@@ -398,7 +398,7 @@ int au_aopen_or_create(struct inode *dir, struct dentry *dentry,
 	return add_simple(dir, dentry, &arg);
 }
 
-int aufs_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
+int aufs_tmpfile(const struct mnt_idmap *idmap, struct inode *dir,
 		 struct file *file, umode_t mode)
 {
 	int err;
@@ -409,7 +409,7 @@ int aufs_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
 	struct dentry *dentry, *parent, *h_parent, *h_dentry;
 	struct inode *h_dir, *inode;
 	struct vfsmount *h_mnt;
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 	struct file *h_file;
 	struct au_wr_dir_args wr_dir_args = {
 		.force_btgt	= -1,
@@ -821,7 +821,7 @@ out:
 	return err;
 }
 
-struct dentry *aufs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
+struct dentry *aufs_mkdir(const struct mnt_idmap *idmap, struct inode *dir,
 			  struct dentry *dentry, umode_t mode)
 {
 	int err, rerr;
