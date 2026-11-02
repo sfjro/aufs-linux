@@ -59,7 +59,7 @@ static int h_permission(struct inode *h_inode, int mask,
 	if (!err)
 		err = devcgroup_inode_permission(h_inode, mask);
 	if (!err)
-		err = security_inode_permission(h_inode, mask);
+		err = security_inode_permission(h_idmap, h_inode, mask);
 
 out:
 	return err;
