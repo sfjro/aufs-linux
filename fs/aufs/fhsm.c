@@ -177,14 +177,17 @@ static __poll_t au_fhsm_poll(struct file *file, struct poll_table_struct *wait)
 static int au_fhsm_do_read_one(struct aufs_stbr __user *stbr,
 			      struct aufs_stfs *stfs, __s16 brid)
 {
-	int err;
+	int err, e;
 
-	err = copy_to_user(&stbr->stfs, stfs, sizeof(*stfs));
-	if (!err)
-		err = __put_user(brid, &stbr->brid);
-	if (unlikely(err))
-		err = -EFAULT;
+	err = -EFAULT;
+	e = copy_to_user(&stbr->stfs, stfs, sizeof(*stfs));
+	if (unlikely(e))
+		goto out;
+	scoped_user_write_access(stbr, out)
+		unsafe_put_user(brid, &stbr->brid, out);
+	err = 0;
 
+out:
 	return err;
 }
 
