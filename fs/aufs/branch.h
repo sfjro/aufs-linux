@@ -133,7 +133,7 @@ static inline struct dentry *au_br_dentry(struct au_branch *br)
 	return br->br_path.dentry;
 }
 
-static inline struct mnt_idmap *au_br_idmap(struct au_branch *br)
+static inline const struct mnt_idmap *au_br_idmap(struct au_branch *br)
 {
 	return mnt_idmap(br->br_path.mnt);
 }
@@ -297,7 +297,7 @@ struct vfsmount *au_sbr_mnt(struct super_block *sb, aufs_bindex_t bindex)
 }
 
 static inline
-struct mnt_idmap *au_sbr_idmap(struct super_block *sb, aufs_bindex_t bindex)
+const struct mnt_idmap *au_sbr_idmap(struct super_block *sb, aufs_bindex_t bindex)
 {
 	return au_br_idmap(au_sbr(sb, bindex));
 }

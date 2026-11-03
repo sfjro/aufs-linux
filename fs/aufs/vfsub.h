@@ -269,7 +269,7 @@ static inline int vfsub_update_time(struct inode *h_inode,
 }
 
 #ifdef CONFIG_FS_POSIX_ACL
-static inline int vfsub_acl_chmod(struct mnt_idmap *h_idmap,
+static inline int vfsub_acl_chmod(const struct mnt_idmap *h_idmap,
 				  struct dentry *h_dentry, umode_t h_mode)
 {
 	int err;
@@ -280,7 +280,7 @@ static inline int vfsub_acl_chmod(struct mnt_idmap *h_idmap,
 	return err;
 }
 #else
-AuStubInt0(vfsub_acl_chmod, struct mnt_idmap *h_idmap,
+AuStubInt0(vfsub_acl_chmod, const struct mnt_idmap *h_idmap,
 	   struct dentry *h_dentry, umode_t h_mode);
 #endif
 
@@ -361,7 +361,7 @@ static inline int vfsub_getattr(const struct path *path, struct kstat *st)
 
 /* ---------------------------------------------------------------------- */
 
-static inline int vfsub_setxattr(struct mnt_idmap *idmap,
+static inline int vfsub_setxattr(const struct mnt_idmap *idmap,
 				 struct dentry *dentry, const char *name,
 				 const void *value, size_t size, int flags)
 {
@@ -374,7 +374,7 @@ static inline int vfsub_setxattr(struct mnt_idmap *idmap,
 	return err;
 }
 
-static inline int vfsub_removexattr(struct mnt_idmap *idmap,
+static inline int vfsub_removexattr(const struct mnt_idmap *idmap,
 				    struct dentry *dentry, const char *name)
 {
 	int err;
@@ -387,7 +387,7 @@ static inline int vfsub_removexattr(struct mnt_idmap *idmap,
 }
 
 #ifdef CONFIG_FS_POSIX_ACL
-static inline int vfsub_set_acl(struct mnt_idmap *idmap,
+static inline int vfsub_set_acl(const struct mnt_idmap *idmap,
 				struct dentry *dentry, const char *name,
 				struct posix_acl *acl)
 {
@@ -400,7 +400,7 @@ static inline int vfsub_set_acl(struct mnt_idmap *idmap,
 	return err;
 }
 
-static inline int vfsub_remove_acl(struct mnt_idmap *idmap,
+static inline int vfsub_remove_acl(const struct mnt_idmap *idmap,
 				   struct dentry *dentry, const char *name)
 {
 	int err;
@@ -412,9 +412,9 @@ static inline int vfsub_remove_acl(struct mnt_idmap *idmap,
 	return err;
 }
 #else
-AuStubInt0(vfsub_set_acl, struct mnt_idmap *idmap, struct dentry *dentry,
+AuStubInt0(vfsub_set_acl, const struct mnt_idmap *idmap, struct dentry *dentry,
 	   const char *name, struct posix_acl *acl);
-AuStubInt0(vfsub_remove_acl, struct mnt_idmap *idmap,
+AuStubInt0(vfsub_remove_acl, const struct mnt_idmap *idmap,
 	   struct dentry *dentry, const char *name);
 #endif
 

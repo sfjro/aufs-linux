@@ -21,7 +21,7 @@ au_do_lookup(struct dentry *h_parent, struct dentry *dentry,
 	struct dentry *h_dentry;
 	struct inode *h_inode;
 	struct au_branch *br;
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 	struct path h_path;
 	int wh_found, opq;
 	unsigned char wh_able;
@@ -235,8 +235,8 @@ out:
 	return err;
 }
 
-struct dentry *au_sio_lkup_one(struct mnt_idmap *idmap, const struct qstr *name,
-			       struct path *ppath)
+struct dentry *au_sio_lkup_one(const struct mnt_idmap *idmap,
+			       const struct qstr *name, struct path *ppath)
 {
 	struct dentry *dentry;
 	int wkq_err;
@@ -266,7 +266,7 @@ int au_lkup_neg(struct dentry *dentry, aufs_bindex_t bindex, int wh)
 	int err;
 	struct dentry *parent, *h_dentry;
 	struct au_branch *br;
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 	struct path h_ppath;
 
 	parent = dget_parent(dentry);

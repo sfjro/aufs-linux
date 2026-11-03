@@ -59,8 +59,9 @@ static bool au_rdu_fill(struct dir_context *ctx, const char *name, int nlen,
 		if (copy_to_user(arg->ent.e->name, name, nlen))
 			goto out;
 		/* the terminating NULL */
-		if (__put_user(0, arg->ent.e->name + nlen))
-			goto out;
+		char __user *dst = arg->ent.e->name + nlen;
+		scoped_user_write_access(dst, out)
+			unsafe_put_user('\0', dst, out);
 		err = 0;
 		/* AuDbg("%p, %.*s\n", arg->ent.p, nlen, name); */
 		arg->ent.ul += len;
@@ -247,16 +248,16 @@ static int au_rdu_ino(struct file *file, struct aufs_rdu *rdu)
 			break;
 		}
 
-		err = __put_user(ino, &u->e->ino);
-		if (unlikely(err)) {
-			err = -EFAULT;
-			AuTraceErr(err);
-			break;
-		}
+		err = -EFAULT;
+		uint64_t __user *dst = &u->e->ino;
+		scoped_user_write_access(dst, out)
+			unsafe_put_user(ino, dst, out);
+		err = 0;
 		u->ul += au_rdu_len(ent.nlen);
 	}
-	si_read_unlock(sb);
 
+out:
+	si_read_unlock(sb);
 	return err;
 }
 

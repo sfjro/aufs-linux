@@ -284,7 +284,7 @@ int vfsub_create(struct inode *dir, struct path *path, int mode)
 	int err, e;
 	struct dentry *d;
 	struct inode *inode;
-	struct mnt_idmap *idmap;
+	const struct mnt_idmap *idmap;
 	struct delegated_inode deleg = {};
 
 	IMustLock(dir);
@@ -330,7 +330,7 @@ int vfsub_symlink(struct inode *dir, struct path *path, const char *symname)
 {
 	int err, e;
 	struct dentry *d;
-	struct mnt_idmap *idmap;
+	const struct mnt_idmap *idmap;
 	struct delegated_inode deleg = {};
 
 	IMustLock(dir);
@@ -375,7 +375,7 @@ int vfsub_mknod(struct inode *dir, struct path *path, int mode, dev_t dev)
 	int err, e;
 	struct dentry *d;
 	struct inode *inode;
-	struct mnt_idmap *idmap;
+	const struct mnt_idmap *idmap;
 	struct delegated_inode deleg = {};
 
 	IMustLock(dir);
@@ -431,7 +431,7 @@ int vfsub_link(struct dentry *src_dentry, struct inode *dir, struct path *path)
 {
 	int err, e;
 	struct dentry *d;
-	struct mnt_idmap *idmap;
+	const struct mnt_idmap *idmap;
 	struct delegated_inode deleg = {};
 
 	IMustLock(dir);
@@ -542,7 +542,7 @@ struct dentry *vfsub_mkdir(struct inode *dir, struct path *path, int mode)
 	int err, e, did;
 	struct dentry *d, *ret;
 	struct inode *inode;
-	struct mnt_idmap *idmap;
+	const struct mnt_idmap *idmap;
 	struct path tmp;
 	struct delegated_inode deleg = {};
 
@@ -595,7 +595,7 @@ int vfsub_rmdir(struct inode *dir, struct path *path)
 {
 	int err, e;
 	struct dentry *d;
-	struct mnt_idmap *idmap;
+	const struct mnt_idmap *idmap;
 	struct delegated_inode deleg = {};
 
 	IMustLock(dir);
@@ -775,7 +775,7 @@ int vfsub_trunc(const struct path *h_path, loff_t length, unsigned int attr,
 	int err;
 	struct inode *h_inode;
 	struct super_block *h_sb;
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 
 	if (!h_file) {
 		err = vfsub_truncate(h_path, length);
@@ -819,7 +819,7 @@ static void au_call_vfsub_mkdir(void *args)
 struct dentry *vfsub_sio_mkdir(struct inode *dir, struct path *path, int mode)
 {
 	int err, do_sio;
-	struct mnt_idmap *idmap;
+	const struct mnt_idmap *idmap;
 	struct dentry *ret;
 
 	idmap = mnt_idmap(path->mnt);
@@ -856,7 +856,7 @@ static void au_call_vfsub_rmdir(void *args)
 int vfsub_sio_rmdir(struct inode *dir, struct path *path)
 {
 	int err, do_sio, wkq_err;
-	struct mnt_idmap *idmap;
+	const struct mnt_idmap *idmap;
 
 	idmap = mnt_idmap(path->mnt);
 	do_sio = au_test_h_perm_sio(idmap, dir, MAY_EXEC | MAY_WRITE);
@@ -890,7 +890,7 @@ static void call_notify_change(void *args)
 {
 	struct notify_change_args *a = args;
 	struct inode *h_inode;
-	struct mnt_idmap *idmap;
+	const struct mnt_idmap *idmap;
 	struct delegated_inode deleg = {};
 
 	h_inode = d_inode(a->path->dentry);
@@ -964,7 +964,7 @@ static void call_unlink(void *args)
 	struct unlink_args *a = args;
 	struct dentry *d = a->path->dentry;
 	struct inode *h_inode;
-	struct mnt_idmap *idmap;
+	const struct mnt_idmap *idmap;
 	struct delegated_inode deleg = {};
 	const int stop_sillyrename = (au_test_nfs(d->d_sb)
 				      && au_dcount(d) == 1);

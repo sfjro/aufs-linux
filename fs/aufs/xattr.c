@@ -58,7 +58,7 @@ static int au_do_cpup_xattr(struct path *h_dst, struct path *h_src,
 	ssize_t ssz;
 	struct inode *h_idst;
 	struct dentry *h_dst_dentry, *h_src_dentry;
-	struct mnt_idmap *h_dst_idmap, *h_src_idmap;
+	const struct mnt_idmap *h_dst_idmap, *h_src_idmap;
 	struct posix_acl *acl;
 
 	is_acl = !!is_posix_acl_xattr(name);
@@ -321,7 +321,7 @@ static int au_xattr_get(const struct xattr_handler *handler,
 }
 
 static int au_xattr_set(const struct xattr_handler *handler,
-			struct mnt_idmap *idmap,
+			const struct mnt_idmap *idmap,
 			struct dentry *dentry, struct inode *inode,
 			const char *name, const void *value, size_t size,
 			int flags)

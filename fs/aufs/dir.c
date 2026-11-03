@@ -624,7 +624,7 @@ static int sio_test_empty(struct dentry *dentry, struct test_empty_arg *arg)
 	int err, wkq_err;
 	struct dentry *h_dentry;
 	struct inode *h_inode;
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 
 	h_idmap = au_sbr_idmap(dentry->d_sb, arg->bindex);
 	h_dentry = au_h_dptr(dentry, arg->bindex);
