@@ -569,7 +569,7 @@ static int au_reset_acl(struct path *h_path, umode_t mode)
 {
 	int err;
 	struct dentry *h_dentry;
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 
 	h_idmap = mnt_idmap(h_path->mnt);
 	h_dentry = h_path->dentry;
@@ -590,7 +590,7 @@ static int au_do_cpup_dir(struct au_cp_generic *cpg, struct dentry *dst_parent,
 {
 	int err;
 	struct inode *dir, *inode;
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 
 	h_idmap = mnt_idmap(h_path->mnt);
 	err = vfsub_remove_acl(h_idmap, h_path->dentry,
@@ -1076,7 +1076,7 @@ static int au_do_sio_cpup_simple(struct au_cp_generic *cpg)
 	struct dentry *dentry, *parent;
 	struct file *h_file;
 	struct inode *h_dir;
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 
 	dentry = cpg->dentry;
 	h_file = NULL;
@@ -1264,7 +1264,7 @@ int au_sio_cpup_wh(struct au_cp_generic *cpg, struct file *file)
 	struct inode *dir, *h_dir, *h_tmpdir;
 	struct au_wbr *wbr;
 	struct au_pin wh_pin, *pin_orig;
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 
 	dentry = cpg->dentry;
 	bdst = cpg->bdst;

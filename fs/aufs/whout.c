@@ -51,7 +51,7 @@ int au_wh_name_alloc(struct qstr *wh, const struct qstr *name)
  * test if the @wh_name exists under @h_ppath.
  * @try_sio specifies the necessary of super-io.
  */
-int au_wh_test(struct mnt_idmap *h_idmap, struct path *h_ppath,
+int au_wh_test(const struct mnt_idmap *h_idmap, struct path *h_ppath,
 	       const struct qstr *wh_name, int try_sio)
 {
 	int err;
@@ -89,7 +89,7 @@ out:
 /*
  * test if the @h_path->dentry sets opaque or not.
  */
-int au_diropq_test(struct mnt_idmap *h_idmap, struct path *h_path)
+int au_diropq_test(const struct mnt_idmap *h_idmap, struct path *h_path)
 {
 	int err;
 	struct inode *h_dir;
@@ -114,7 +114,7 @@ struct dentry *au_whtmp_lkup(struct dentry *h_parent, struct au_branch *br,
 	static unsigned short cnt;
 	struct qstr qs;
 	struct path h_ppath;
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 
 	BUILD_BUG_ON(sizeof(cnt) * 2 > AUFS_WH_TMP_LEN);
 
@@ -742,7 +742,7 @@ struct dentry *au_diropq_sio(struct dentry *dentry, aufs_bindex_t bindex,
 			     unsigned int flags)
 {
 	struct dentry *diropq, *h_dentry;
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 
 	h_idmap = au_sbr_idmap(dentry->d_sb, bindex);
 	h_dentry = au_h_dptr(dentry, bindex);
@@ -935,7 +935,7 @@ int au_whtmp_rmdir(struct inode *dir, aufs_bindex_t bindex,
 	struct path wh_path;
 	struct inode *wh_inode, *h_dir;
 	struct au_branch *br;
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 
 	h_dir = d_inode(wh_dentry->d_parent); /* dir inode is locked */
 	IMustLock(h_dir);

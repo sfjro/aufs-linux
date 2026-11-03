@@ -18,7 +18,7 @@ static int h_permission(struct inode *h_inode, int mask,
 {
 	int err;
 	const unsigned char write_mask = !!(mask & (MAY_WRITE | MAY_APPEND));
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 
 	err = -EPERM;
 	if (write_mask && IS_IMMUTABLE(h_inode))
@@ -59,13 +59,13 @@ static int h_permission(struct inode *h_inode, int mask,
 	if (!err)
 		err = devcgroup_inode_permission(h_inode, mask);
 	if (!err)
-		err = security_inode_permission(h_inode, mask);
+		err = security_inode_permission(h_idmap, h_inode, mask);
 
 out:
 	return err;
 }
 
-static int aufs_permission(struct mnt_idmap *idmap, struct inode *inode,
+static int aufs_permission(const struct mnt_idmap *idmap, struct inode *inode,
 			   int mask)
 {
 	int err;
@@ -920,7 +920,7 @@ out:
 	return err;
 }
 
-static int aufs_setattr(struct mnt_idmap *idmap, struct dentry *dentry,
+static int aufs_setattr(const struct mnt_idmap *idmap, struct dentry *dentry,
 			struct iattr *ia)
 {
 	int err;
@@ -928,7 +928,7 @@ static int aufs_setattr(struct mnt_idmap *idmap, struct dentry *dentry,
 	struct super_block *sb;
 	struct file *file;
 	struct au_icpup_args *a;
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 
 	inode = d_inode(dentry);
 	IMustLock(inode);
@@ -1087,7 +1087,7 @@ ssize_t au_sxattr(struct dentry *dentry, struct inode *inode,
 	struct super_block *sb;
 	struct au_icpup_args *a;
 	struct inode *h_inode;
-	struct mnt_idmap *h_idmap;
+	const struct mnt_idmap *h_idmap;
 
 	IMustLock(inode);
 
@@ -1254,7 +1254,7 @@ out:
 	return err;
 }
 
-static int aufs_getattr(struct mnt_idmap *idmap, const struct path *path,
+static int aufs_getattr(const struct mnt_idmap *idmap, const struct path *path,
 			struct kstat *st, u32 request, unsigned int query)
 {
 	int err;

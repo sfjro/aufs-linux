@@ -146,9 +146,9 @@ int au_ino(struct super_block *sb, aufs_bindex_t bindex, ino_t h_ino,
 struct inode *au_new_inode(struct dentry *dentry, int must_new);
 int au_test_ro(struct super_block *sb, aufs_bindex_t bindex,
 	       struct inode *inode);
-int au_test_h_perm(struct mnt_idmap *h_idmap, struct inode *h_inode,
+int au_test_h_perm(const struct mnt_idmap *h_idmap, struct inode *h_inode,
 		   int mask);
-int au_test_h_perm_sio(struct mnt_idmap *h_idmap, struct inode *h_inode,
+int au_test_h_perm_sio(const struct mnt_idmap *h_idmap, struct inode *h_inode,
 		       int mask);
 
 static inline int au_wh_ino(struct super_block *sb, aufs_bindex_t bindex,
@@ -224,20 +224,20 @@ int au_h_path_getattr(struct dentry *dentry, struct inode *inode, int force,
 /* i_op_add.c */
 int au_may_add(struct dentry *dentry, aufs_bindex_t bindex,
 	       struct dentry *h_parent, int isdir);
-int aufs_mknod(struct mnt_idmap *idmap, struct inode *dir,
+int aufs_mknod(const struct mnt_idmap *idmap, struct inode *dir,
 	       struct dentry *dentry, umode_t mode, dev_t dev);
-int aufs_symlink(struct mnt_idmap *idmap, struct inode *dir,
+int aufs_symlink(const struct mnt_idmap *idmap, struct inode *dir,
 		 struct dentry *dentry, const char *symname);
-int aufs_create(struct mnt_idmap *idmap, struct inode *dir,
+int aufs_create(const struct mnt_idmap *idmap, struct inode *dir,
 		struct dentry *dentry, umode_t mode);
 struct vfsub_aopen_args;
 int au_aopen_or_create(struct inode *dir, struct dentry *dentry,
 		       struct vfsub_aopen_args *args);
-int aufs_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
+int aufs_tmpfile(const struct mnt_idmap *idmap, struct inode *dir,
 		 struct file *file, umode_t mode);
 int aufs_link(struct dentry *src_dentry, struct inode *dir,
 	      struct dentry *dentry);
-struct dentry *aufs_mkdir(struct mnt_idmap *idmap, struct inode *dir,
+struct dentry *aufs_mkdir(const struct mnt_idmap *idmap, struct inode *dir,
 			  struct dentry *dentry, umode_t mode);
 
 /* i_op_del.c */
@@ -249,7 +249,7 @@ int aufs_rmdir(struct inode *dir, struct dentry *dentry);
 
 /* i_op_ren.c */
 int au_wbr(struct dentry *dentry, aufs_bindex_t btgt);
-int aufs_rename(struct mnt_idmap *idmap,
+int aufs_rename(const struct mnt_idmap *idmap,
 		struct inode *_src_dir, struct dentry *_src_dentry,
 		struct inode *_dst_dir, struct dentry *_dst_dentry,
 		unsigned int _flags);
@@ -334,9 +334,9 @@ AuStubVoid(au_xattr_init, struct super_block *sb);
 
 #ifdef CONFIG_FS_POSIX_ACL
 struct posix_acl *aufs_get_inode_acl(struct inode *inode, int type, bool rcu);
-struct posix_acl *aufs_get_acl(struct mnt_idmap *idmap, struct dentry *dentry,
-			       int type);
-int aufs_set_acl(struct mnt_idmap *idmap, struct dentry *dentry,
+struct posix_acl *aufs_get_acl(const struct mnt_idmap *idmap,
+			       struct dentry *dentry, int type);
+int aufs_set_acl(const struct mnt_idmap *idmap, struct dentry *dentry,
 		 struct posix_acl *acl, int type);
 #endif
 

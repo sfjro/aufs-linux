@@ -1148,11 +1148,10 @@ static int au_ibusy(struct super_block *sb, struct aufs_ibusy __user *arg)
 out_unlock:
 	si_read_unlock(sb);
 	if (!err) {
-		err = __put_user(ibusy.h_ino, &arg->h_ino);
-		if (unlikely(err)) {
-			err = -EFAULT;
-			AuTraceErr(err);
-		}
+		err = -EFAULT;
+		scoped_user_write_access(arg, out)
+			unsafe_put_user(ibusy.h_ino, &arg->h_ino, out);
+		err = 0;
 	}
 out:
 	return err;

@@ -219,14 +219,12 @@ static int au_brinfo(struct super_block *sb, union aufs_brinfo __user *arg)
 		br = au_sbr(sb, bindex);
 		brid = br->br_id;
 		BUILD_BUG_ON(sizeof(brid) != sizeof(arg->id));
-		err = __put_user(brid, &arg->id);
-		if (unlikely(err))
-			break;
-
 		BUILD_BUG_ON(sizeof(br->br_perm) != sizeof(arg->perm));
-		err = __put_user(br->br_perm, &arg->perm);
-		if (unlikely(err))
-			break;
+		err = -EFAULT;
+		scoped_user_write_access(arg, out_seq) {
+			unsafe_put_user(brid, &arg->id, out_seq);
+			unsafe_put_user(br->br_perm, &arg->perm, out_seq);
+		}
 
 		err = au_seq_path(seq, &br->br_path);
 		if (unlikely(err))
