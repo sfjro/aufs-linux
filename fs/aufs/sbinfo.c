@@ -183,6 +183,21 @@ aufs_bindex_t au_new_br_id(struct super_block *sb)
 
 /* ---------------------------------------------------------------------- */
 
+/* wait for the pseudo-link maintainer to leave, si_rwsem not held */
+void si_plink_maint_wait(struct super_block *sb, int flags)
+{
+	struct au_sbinfo *sbi = au_sbi(sb);
+
+	/* if there is no i_mutex lock in VFS, we don't need to wait */
+	/* AuDebugOn(!lockdep_depth(current)); */
+
+	/* gave up wake_up_bit() */
+	wait_event(sbi->si_plink_wq, !sbi->si_plink_maint_pid);
+
+	if (au_ftest_lock(flags, FLUSH))
+		au_nwt_flush(&sbi->si_nowait);
+}
+
 /* it is ok that new 'nwt' tasks are appended while we are sleeping */
 int si_read_lock(struct super_block *sb, int flags)
 {
