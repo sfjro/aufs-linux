@@ -445,10 +445,10 @@ int au_ready_to_write(struct file *file, loff_t len, struct au_pin *pin)
 	    || !d_unhashed(cpg.dentry)	/* copyup and reopen */
 		) {
 		h_file = au_h_open_pre(cpg.dentry, cpg.bsrc, /*force_wr*/0);
+		di_downgrade_lock(parent, AuLock_IR);
 		if (IS_ERR(h_file))
 			err = PTR_ERR(h_file);
 		else {
-			di_downgrade_lock(parent, AuLock_IR);
 			if (dbtop > cpg.bdst)
 				err = au_sio_cpup_simple(&cpg);
 			if (!err)
