@@ -66,15 +66,9 @@ int au_plink_maint(struct super_block *sb, int flags)
 	rcu_read_unlock();
 
 	if (au_ftest_lock(flags, NOPLMW)) {
-		/* if there is no i_mutex lock in VFS, we don't need to wait */
-		/* AuDebugOn(!lockdep_depth(current)); */
 		while (sbi->si_plink_maint_pid) {
 			si_read_unlock(sb);
-			/* gave up wake_up_bit() */
-			wait_event(sbi->si_plink_wq, !sbi->si_plink_maint_pid);
-
-			if (au_ftest_lock(flags, FLUSH))
-				au_nwt_flush(&sbi->si_nowait);
+			si_plink_maint_wait(sb, flags);
 			si_noflush_read_lock(sb);
 		}
 	} else if (au_ftest_lock(flags, NOPLM)) {
