@@ -234,7 +234,8 @@ int au_do_open(struct file *file, struct au_do_open_args *args)
 			lockdep_on();
 			di_read_unlock(dentry, AuLock_IR);
 		}
-	}
+	} else
+		di_write_unlock(dentry);
 
 	finfo = au_fi(file);
 	if (!err) {
