@@ -248,8 +248,10 @@ struct file *au_xino_create2(struct super_block *sb, const struct path *base,
 
 	path.mnt = base->mnt;
 	err = vfsub_mnt_want_write(path.mnt);
-	if (unlikely(err))
+	if (unlikely(err)) {
+		file = ERR_PTR(err);
 		goto out_dput;
+	}
 
 	err = vfs_create(mnt_idmap(base->mnt), path.dentry, 0666, NULL);
 	if (unlikely(err)) {
