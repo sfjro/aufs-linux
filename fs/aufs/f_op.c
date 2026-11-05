@@ -507,6 +507,7 @@ static ssize_t aufs_copy_file_range(struct file *src, loff_t src_pos,
 		a_dst.h_file = au_write_pre(dst, /*do_ready*/1, &wpre);
 		err = PTR_ERR(a_dst.h_file);
 		if (IS_ERR(a_dst.h_file)) {
+			fi_read_unlock(src);
 			au_read_post(a_src.inode, a_src.h_file);
 			goto out_si;
 		}
