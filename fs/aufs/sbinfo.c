@@ -184,7 +184,7 @@ aufs_bindex_t au_new_br_id(struct super_block *sb)
 /* ---------------------------------------------------------------------- */
 
 /* wait for the pseudo-link maintainer to leave, si_rwsem not held */
-void si_plink_maint_wait(struct super_block *sb, int flags)
+static void si_plink_maint_wait(struct super_block *sb, int flags)
 {
 	struct au_sbinfo *sbi = au_sbi(sb);
 
@@ -209,6 +209,14 @@ int si_read_lock(struct super_block *sb, int flags)
 
 	si_noflush_read_lock(sb);
 	err = au_plink_maint(sb, flags);
+	if (unlikely(err) && au_ftest_lock(flags, NOPLMW)) {
+		do {
+			si_read_unlock(sb);
+			si_plink_maint_wait(sb, flags);
+			si_noflush_read_lock(sb);
+			err = au_plink_maint(sb, flags);
+		} while (unlikely(err));
+	}
 	if (unlikely(err))
 		si_read_unlock(sb);
 
@@ -224,6 +232,14 @@ int si_write_lock(struct super_block *sb, int flags)
 
 	si_noflush_write_lock(sb);
 	err = au_plink_maint(sb, flags);
+	if (unlikely(err) && au_ftest_lock(flags, NOPLMW)) {
+		do {
+			si_write_unlock(sb);
+			si_plink_maint_wait(sb, flags);
+			si_noflush_write_lock(sb);
+			err = au_plink_maint(sb, flags);
+		} while (unlikely(err));
+	}
 	if (unlikely(err))
 		si_write_unlock(sb);
 
