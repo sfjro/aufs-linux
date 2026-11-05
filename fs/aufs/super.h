@@ -270,7 +270,6 @@ int au_sbr_realloc(struct au_sbinfo *sbinfo, int nbr, int may_shrink);
 unsigned int au_sigen_inc(struct super_block *sb);
 aufs_bindex_t au_new_br_id(struct super_block *sb);
 
-void si_plink_maint_wait(struct super_block *sb, int flags);
 int si_read_lock(struct super_block *sb, int flags);
 int si_write_lock(struct super_block *sb, int flags);
 int aufs_read_lock(struct dentry *dentry, int flags);
