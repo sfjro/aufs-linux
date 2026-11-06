@@ -275,11 +275,38 @@ int do_si_write_lock_noplm(struct super_block *sb, int flags)
 	return err;
 }
 
-/* dentry and super_block lock. call at entry point */
-int aufs_read_lock(struct dentry *dentry, int flags)
+static void aufs_read_lock_di(struct dentry *dentry, int flags)
+{
+	if (au_ftest_lock(flags, DW))
+		di_write_lock_child(dentry);
+	else
+		di_read_lock_child(dentry, flags);
+}
+
+/*
+ * dentry and super_block lock. call at entry point.
+ * Never fails.  The aufs_read_lock() macro calls do_aufs_read_lock_gen_noplm()
+ * instead for AuLock_GEN or AuLock_NOPLM.
+ */
+void do_aufs_read_lock(struct dentry *dentry, int flags)
+{
+	AuDebugOn(au_ftest_lock(flags, GEN) || au_ftest_lock(flags, NOPLM));
+
+	do_si_read_lock(dentry->d_sb, flags);
+	aufs_read_lock_di(dentry, flags);
+}
+
+/*
+ * @flags must contain AuLock_GEN and/or AuLock_NOPLM.  Returns 0 with the
+ * locks held, or an error (generation mismatch, -EAGAIN for AuLock_NOPLM)
+ * with nothing held.
+ */
+int do_aufs_read_lock_gen_noplm(struct dentry *dentry, int flags)
 {
 	int err;
 	struct super_block *sb;
+
+	AuDebugOn(!au_ftest_lock(flags, GEN) && !au_ftest_lock(flags, NOPLM));
 
 	sb = dentry->d_sb;
 	if (au_ftest_lock(flags, NOPLM)) {
@@ -291,10 +318,7 @@ int aufs_read_lock(struct dentry *dentry, int flags)
 		do_si_read_lock(sb, flags);
 	}
 
-	if (au_ftest_lock(flags, DW))
-		di_write_lock_child(dentry);
-	else
-		di_read_lock_child(dentry, flags);
+	aufs_read_lock_di(dentry, flags);
 
 	if (au_ftest_lock(flags, GEN)) {
 		err = au_digen_test(dentry, au_sigen(sb));
