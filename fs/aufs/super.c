@@ -800,6 +800,23 @@ out:
 
 /* ---------------------------------------------------------------------- */
 
+/* the first and the last part of aufs_kill_sb(), with si_rwsem held */
+static void au_kill_sb_fin(struct super_block *sb)
+{
+	struct au_sbinfo *sbinfo = au_sbi(sb);
+
+	au_fhsm_fin(sb);
+	if (sbinfo->si_wbr_create_ops->fin)
+		sbinfo->si_wbr_create_ops->fin(sb);
+}
+
+static void au_kill_sb_pclr(struct super_block *sb)
+{
+	if (au_opt_test(au_sbi(sb)->si_mntflags, PLINK))
+		au_plink_put(sb, /*verbose*/1);
+	au_xino_clr(sb);
+}
+
 static void aufs_kill_sb(struct super_block *sb)
 {
 	struct au_sbinfo *sbinfo;
@@ -812,28 +829,28 @@ static void aufs_kill_sb(struct super_block *sb)
 	au_sbilist_del(sb);
 
 	root = sb->s_root;
-	if (root)
+	if (root) {
 		aufs_write_lock(root);
-	else
-		__si_write_lock(sb);
-
-	au_fhsm_fin(sb);
-	if (sbinfo->si_wbr_create_ops->fin)
-		sbinfo->si_wbr_create_ops->fin(sb);
-	if (au_opt_test(sbinfo->si_mntflags, UDBA_HNOTIFY)) {
-		au_opt_set_udba(sbinfo->si_mntflags, UDBA_NONE);
-		au_remount_refresh(sb, /*do_idop*/0);
-	}
-	if (au_opt_test(sbinfo->si_mntflags, PLINK))
-		au_plink_put(sb, /*verbose*/1);
-	au_xino_clr(sb);
-	if (root)
+		au_kill_sb_fin(sb);
+		if (au_opt_test(sbinfo->si_mntflags, UDBA_HNOTIFY)) {
+			au_opt_set_udba(sbinfo->si_mntflags, UDBA_NONE);
+			au_remount_refresh(sb, /*do_idop*/0);
+		}
+		au_kill_sb_pclr(sb);
 		au_dr_opt_flush(sb);
-
-	if (root)
 		aufs_write_unlock(root);
-	else
+	} else {
+		/* the mount failed */
+		__si_write_lock(sb);
+		au_kill_sb_fin(sb);
+		/*
+		 * au_remount_refresh() requires the root.  udba=notify cannot
+		 * be left set by a failed mount.
+		 */
+		AuDebugOn(au_opt_test(sbinfo->si_mntflags, UDBA_HNOTIFY));
+		au_kill_sb_pclr(sb);
 		__si_write_unlock(sb);
+	}
 
 	sbinfo->si_sb = NULL;
 	au_nwt_flush(&sbinfo->si_nowait);
