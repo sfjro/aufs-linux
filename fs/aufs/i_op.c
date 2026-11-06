@@ -149,6 +149,24 @@ out:
 
 /* ---------------------------------------------------------------------- */
 
+/*
+ * after d_splice_alias(@inode, @dentry) returned @ret.  If @dentry got
+ * @inode, the iinfo lock is released later by di_write_unlock(@dentry),
+ * otherwise here.
+ */
+static void au_lookup_post(struct dentry *dentry, struct inode *inode,
+			   struct dentry *ret)
+{
+	if (!IS_ERR(ret)) {
+		iput(inode);
+		if (ret && ret != dentry)
+			ii_write_unlock(inode);
+	} else {
+		ii_write_unlock(inode);
+		iput(inode);
+	}
+}
+
 static struct dentry *aufs_lookup(struct inode *dir, struct dentry *dentry,
 				  unsigned int flags)
 {
@@ -179,7 +197,6 @@ static struct dentry *aufs_lookup(struct inode *dir, struct dentry *dentry,
 	if (unlikely(err))
 		goto out_si;
 
-	inode = NULL;
 	npositive = 0; /* suppress a warning */
 	parent = dentry->d_parent; /* dir inode is locked */
 	di_read_lock_parent(parent, AuLock_IR);
@@ -198,28 +215,16 @@ static struct dentry *aufs_lookup(struct inode *dir, struct dentry *dentry,
 		goto out_unlock;
 
 	if (npositive) {
-		inode = au_new_inode(dentry, /*must_new*/0);
-		if (IS_ERR(inode)) {
-			ret = (void *)inode;
-			inode = NULL;
+		err = au_new_inode(dentry, /*must_new*/0, &inode);
+		if (unlikely(err)) {
+			ret = ERR_PTR(err);
 			goto out_unlock;
 		}
-	}
-
-	if (inode)
 		atomic_inc(&inode->i_count);
-	ret = d_splice_alias(inode, dentry);
-	if (inode) {
-		if (!IS_ERR(ret)) {
-			iput(inode);
-			if (ret && ret != dentry)
-				ii_write_unlock(inode);
-		} else {
-			ii_write_unlock(inode);
-			iput(inode);
-			inode = NULL;
-		}
-	}
+		ret = d_splice_alias(inode, dentry);
+		au_lookup_post(dentry, inode, ret);
+	} else
+		ret = d_splice_alias(NULL, dentry);
 
 out_unlock:
 	di_write_unlock(dentry);
