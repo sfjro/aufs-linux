@@ -828,6 +828,40 @@ int au_reval_for_attr(struct dentry *dentry, unsigned int sigen)
 	return err;
 }
 
+/*
+ * The parent dinfo is write-locked by au_icpup_lock_parent() unless the
+ * dentry is the root, i.e. it is held iff the returned parent is non-NULL.
+ * au_icpup_pass_parent() downgrades it and hands it over to the pin, which
+ * then releases it in au_unpin().
+ */
+static struct dentry *au_icpup_lock_parent(struct dentry *dentry)
+{
+	struct dentry *parent;
+
+	if (IS_ROOT(dentry))
+		return NULL;
+	parent = dget_parent(dentry);
+	di_write_lock_parent(parent);
+	return parent;
+}
+
+static void au_icpup_unlock_parent(struct dentry *parent)
+{
+	if (parent) {
+		di_write_unlock(parent);
+		dput(parent);
+	}
+}
+
+static void au_icpup_pass_parent(struct au_pin *pin, struct dentry *parent)
+{
+	if (parent) {
+		au_pin_set_parent_lflag(pin, /*lflag*/0);
+		di_downgrade_lock(parent, AuLock_IR);
+		dput(parent);
+	}
+}
+
 int au_pin_and_icpup(struct dentry *dentry, struct iattr *ia,
 		     struct au_icpup_args *a)
 {
@@ -858,12 +892,9 @@ int au_pin_and_icpup(struct dentry *dentry, struct iattr *ia,
 
 	err = 0;
 	a->pin_flags = AuPin_MNT_WRITE;
-	parent = NULL;
-	if (!IS_ROOT(dentry)) {
+	parent = au_icpup_lock_parent(dentry);
+	if (parent)
 		au_fset_pin(a->pin_flags, DI_LOCKED);
-		parent = dget_parent(dentry);
-		di_write_lock_parent(parent);
-	}
 
 	err = au_pin(&a->pin, dentry, a->btgt, a->udba, a->pin_flags);
 	if (unlikely(err))
@@ -898,12 +929,8 @@ int au_pin_and_icpup(struct dentry *dentry, struct iattr *ia,
 		}
 	}
 
-	if (parent) {
-		au_pin_set_parent_lflag(&a->pin, /*lflag*/0);
-		di_downgrade_lock(parent, AuLock_IR);
-		dput(parent);
-		parent = NULL;
-	}
+	au_icpup_pass_parent(&a->pin, parent);
+	parent = NULL;
 	if (!au_ftest_icpup(a->flags, DID_CPUP))
 		goto out; /* success */
 
@@ -930,10 +957,7 @@ out_unlock:
 		goto out; /* success */
 	au_unpin(&a->pin);
 out_parent:
-	if (parent) {
-		di_write_unlock(parent);
-		dput(parent);
-	}
+	au_icpup_unlock_parent(parent);
 out:
 	if (!err)
 		inode_lock_nested(a->h_inode, AuLsc_I_CHILD);
