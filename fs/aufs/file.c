@@ -698,9 +698,14 @@ out:
 	return err;
 }
 
-/* common function to regular file and dir */
-int au_reval_and_lock_fdi(struct file *file, int (*reopen)(struct file *file),
-			  int wlock, unsigned int fi_lsc)
+/*
+ * common function to regular file and dir.
+ * returns 0 with finfo and dinfo write-locked, or an error with nothing
+ * locked.
+ */
+static int au_do_reval_and_lock_fdi(struct file *file,
+				    int (*reopen)(struct file *file),
+				    unsigned int fi_lsc)
 {
 	int err;
 	unsigned int sigen, figen;
@@ -721,13 +726,8 @@ int au_reval_and_lock_fdi(struct file *file, int (*reopen)(struct file *file),
 		di_write_lock_child2(dentry);
 	btop = au_dbtop(dentry);
 	pseudo_link = (btop != au_ibtop(inode));
-	if (sigen == figen && !pseudo_link && au_fbtop(file) == btop) {
-		if (!wlock) {
-			di_downgrade_lock(dentry, AuLock_IR);
-			fi_downgrade_lock(file);
-		}
+	if (sigen == figen && !pseudo_link && au_fbtop(file) == btop)
 		goto out; /* success */
-	}
 
 	AuDbg("sigen %d, figen %d\n", sigen, figen);
 	if (au_digen_test(dentry, sigen)) {
@@ -737,17 +737,34 @@ int au_reval_and_lock_fdi(struct file *file, int (*reopen)(struct file *file),
 
 	if (!err)
 		err = refresh_file(file, reopen);
-	if (!err) {
-		if (!wlock) {
-			di_downgrade_lock(dentry, AuLock_IR);
-			fi_downgrade_lock(file);
-		}
-	} else {
+	if (unlikely(err)) {
 		di_write_unlock(dentry);
 		fi_write_unlock(file);
 	}
 
 out:
+	return err;
+}
+
+int au_reval_and_write_lock_fdi(struct file *file,
+				int (*reopen)(struct file *file),
+				unsigned int fi_lsc)
+{
+	return au_do_reval_and_lock_fdi(file, reopen, fi_lsc);
+}
+
+int au_reval_and_read_lock_fdi(struct file *file,
+			       int (*reopen)(struct file *file),
+			       unsigned int fi_lsc)
+{
+	int err;
+
+	err = au_do_reval_and_lock_fdi(file, reopen, fi_lsc);
+	if (!err) {
+		di_downgrade_lock(file->f_path.dentry, AuLock_IR);
+		fi_downgrade_lock(file);
+	}
+
 	return err;
 }
 
