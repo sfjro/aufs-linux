@@ -942,71 +942,27 @@ out:
 	return err;
 }
 
-static int aufs_setattr(struct mnt_idmap *idmap, struct dentry *dentry,
-			struct iattr *ia)
+/*
+ * called with the dinfo of @dentry write-locked, and the finfo too for
+ * ATTR_FILE
+ */
+static int au_do_setattr(struct dentry *dentry, struct iattr *ia,
+			 struct au_icpup_args *a)
 {
 	int err;
 	struct inode *inode;
-	struct super_block *sb;
-	struct file *file;
-	struct au_icpup_args *a;
 	struct mnt_idmap *h_idmap;
 
 	inode = d_inode(dentry);
-	IMustLock(inode);
-
-	err = setattr_prepare(idmap, dentry, ia);
-	if (unlikely(err))
-		goto out;
-
-	err = -ENOMEM;
-	a = kzalloc(sizeof(*a), GFP_NOFS);
-	if (unlikely(!a))
-		goto out;
-
-	if (ia->ia_valid & (ATTR_KILL_SUID | ATTR_KILL_SGID))
-		ia->ia_valid &= ~ATTR_MODE;
-
-	file = NULL;
-	sb = dentry->d_sb;
-	err = si_read_lock(sb, AuLock_FLUSH | AuLock_NOPLM);
-	if (unlikely(err))
-		goto out_kfree;
-
-	if (ia->ia_valid & ATTR_FILE) {
-		/* currently ftruncate(2) only */
-		AuDebugOn(!d_is_reg(dentry));
-		file = ia->ia_file;
-		err = au_reval_and_lock_fdi(file, au_reopen_nondir, /*wlock*/1,
-					    /*fi_lsc*/0);
-		if (unlikely(err))
-			goto out_si;
-		ia->ia_file = au_hf_top(file);
-		a->udba = AuOpt_UDBA_NONE;
-	} else {
-		/* fchmod() doesn't pass ia_file */
-		a->udba = au_opt_udba(sb);
-		di_write_lock_child(dentry);
-		/* no d_unlinked(), to set UDBA_NONE for root */
-		if (d_unhashed(dentry))
-			a->udba = AuOpt_UDBA_NONE;
-		if (a->udba != AuOpt_UDBA_NONE) {
-			AuDebugOn(IS_ROOT(dentry));
-			err = au_reval_for_attr(dentry, au_sigen(sb));
-			if (unlikely(err))
-				goto out_dentry;
-		}
-	}
-
 	err = au_pin_and_icpup(dentry, ia, a);
 	if (unlikely(err < 0))
-		goto out_dentry;
+		goto out;
 	if (au_ftest_icpup(a->flags, DID_CPUP)) {
 		ia->ia_file = NULL;
 		ia->ia_valid &= ~ATTR_FILE;
 	}
 
-	a->h_path.mnt = au_sbr_mnt(sb, a->btgt);
+	a->h_path.mnt = au_sbr_mnt(dentry->d_sb, a->btgt);
 	err = vfsub_mnt_want_write(a->h_path.mnt);
 	if (unlikely(err))
 		goto out_unlock;
@@ -1056,13 +1012,71 @@ out_unlock:
 	au_unpin(&a->pin);
 	if (unlikely(err))
 		au_update_dbtop(dentry);
-out_dentry:
-	di_write_unlock(dentry);
-	if (file) {
+out:
+	return err;
+}
+
+static int aufs_setattr(struct mnt_idmap *idmap, struct dentry *dentry,
+			struct iattr *ia)
+{
+	int err;
+	struct inode *inode;
+	struct super_block *sb;
+	struct file *file;
+	struct au_icpup_args *a;
+
+	inode = d_inode(dentry);
+	IMustLock(inode);
+
+	err = setattr_prepare(idmap, dentry, ia);
+	if (unlikely(err))
+		goto out;
+
+	err = -ENOMEM;
+	a = kzalloc(sizeof(*a), GFP_NOFS);
+	if (unlikely(!a))
+		goto out;
+
+	if (ia->ia_valid & (ATTR_KILL_SUID | ATTR_KILL_SGID))
+		ia->ia_valid &= ~ATTR_MODE;
+
+	sb = dentry->d_sb;
+	err = si_read_lock(sb, AuLock_FLUSH | AuLock_NOPLM);
+	if (unlikely(err))
+		goto out_kfree;
+
+	if (ia->ia_valid & ATTR_FILE) {
+		/* currently ftruncate(2) only */
+		AuDebugOn(!d_is_reg(dentry));
+		file = ia->ia_file;
+		AuDebugOn(file->f_path.dentry != dentry);
+		err = au_reval_and_lock_fdi(file, au_reopen_nondir, /*wlock*/1,
+					    /*fi_lsc*/0);
+		if (unlikely(err))
+			goto out_si;
+		ia->ia_file = au_hf_top(file);
+		a->udba = AuOpt_UDBA_NONE;
+		err = au_do_setattr(dentry, ia, a);
+		di_write_unlock(file->f_path.dentry);
 		fi_write_unlock(file);
 		ia->ia_file = file;
 		ia->ia_valid |= ATTR_FILE;
+	} else {
+		/* fchmod() doesn't pass ia_file */
+		a->udba = au_opt_udba(sb);
+		di_write_lock_child(dentry);
+		/* no d_unlinked(), to set UDBA_NONE for root */
+		if (d_unhashed(dentry))
+			a->udba = AuOpt_UDBA_NONE;
+		if (a->udba != AuOpt_UDBA_NONE) {
+			AuDebugOn(IS_ROOT(dentry));
+			err = au_reval_for_attr(dentry, au_sigen(sb));
+		}
+		if (!err)
+			err = au_do_setattr(dentry, ia, a);
+		di_write_unlock(dentry);
 	}
+
 out_si:
 	si_read_unlock(sb);
 out_kfree:
