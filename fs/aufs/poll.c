@@ -21,7 +21,7 @@ __poll_t aufs_poll(struct file *file, struct poll_table_struct *pt)
 	sb = file->f_path.dentry->d_sb;
 	si_read_lock(sb, AuLock_FLUSH | AuLock_NOPLMW);
 
-	h_file = au_read_pre(file, /*keep_fi*/0, /*lsc*/0);
+	h_file = au_read_pre(file, /*lsc*/0);
 	if (IS_ERR(h_file)) {
 		AuDbg("h_file %ld\n", PTR_ERR(h_file));
 		goto out;
