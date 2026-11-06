@@ -41,8 +41,8 @@ static int epilog(struct inode *dir, aufs_bindex_t bindex,
 			goto out;
 	}
 
-	inode = au_new_inode(dentry, /*must_new*/1);
-	if (!IS_ERR(inode)) {
+	err = au_new_inode(dentry, /*must_new*/1, &inode);
+	if (!err) {
 		d_instantiate(dentry, inode);
 		dir = d_inode(dentry->d_parent); /* dir inode is locked */
 		IMustLock(dir);
@@ -52,7 +52,6 @@ static int epilog(struct inode *dir, aufs_bindex_t bindex,
 		return 0; /* success */
 	}
 
-	err = PTR_ERR(inode);
 	if (!wh_dentry)
 		goto out;
 
@@ -503,9 +502,8 @@ int aufs_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
 	au_set_dbtop(dentry, bindex);
 	au_set_dbbot(dentry, bindex);
 	au_set_h_dptr(dentry, bindex, dget(h_dentry));
-	inode = au_new_inode(dentry, /*must_new*/1);
-	if (IS_ERR(inode)) {
-		err = PTR_ERR(inode);
+	err = au_new_inode(dentry, /*must_new*/1, &inode);
+	if (unlikely(err)) {
 		au_set_h_dptr(dentry, bindex, NULL);
 		au_set_dbtop(dentry, -1);
 		au_set_dbbot(dentry, -1);
