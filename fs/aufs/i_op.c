@@ -651,6 +651,22 @@ struct dentry *au_pinned_h_parent(struct au_pin *pin)
 	return NULL;
 }
 
+/*
+ * Lock/unlock the parent dinfo unless the caller has locked it
+ * (AuPin_DI_LOCKED).
+ */
+static void au_pin_di_read_lock(struct au_pin *p)
+{
+	if (!au_ftest_pin(p->flags, DI_LOCKED))
+		di_read_lock(p->parent, AuLock_IR, p->lsc_di);
+}
+
+static void au_pin_di_read_unlock(struct au_pin *p)
+{
+	if (!au_ftest_pin(p->flags, DI_LOCKED))
+		di_read_unlock(p->parent, AuLock_IR);
+}
+
 void au_unpin(struct au_pin *p)
 {
 	if (p->hdir)
@@ -660,8 +676,7 @@ void au_unpin(struct au_pin *p)
 	if (!p->hdir)
 		return;
 
-	if (!au_ftest_pin(p->flags, DI_LOCKED))
-		di_read_unlock(p->parent, AuLock_IR);
+	au_pin_di_read_unlock(p);
 	iput(p->hdir->hi_inode);
 	dput(p->parent);
 	p->parent = NULL;
@@ -696,8 +711,7 @@ int au_do_pin(struct au_pin *p)
 		p->h_dentry = au_h_dptr(p->dentry, p->bindex);
 
 	p->parent = dget_parent(p->dentry);
-	if (!au_ftest_pin(p->flags, DI_LOCKED))
-		di_read_lock(p->parent, AuLock_IR, p->lsc_di);
+	au_pin_di_read_lock(p);
 
 	h_dir = NULL;
 	p->h_parent = au_h_dptr(p->parent, p->bindex);
@@ -712,8 +726,7 @@ int au_do_pin(struct au_pin *p)
 	 */
 	if (unlikely(!p->hdir || !h_dir || !p->h_parent)) {
 		err = -EBUSY;
-		if (!au_ftest_pin(p->flags, DI_LOCKED))
-			di_read_unlock(p->parent, AuLock_IR);
+		au_pin_di_read_unlock(p);
 		dput(p->parent);
 		p->parent = NULL;
 		goto out_err;
@@ -724,8 +737,7 @@ int au_do_pin(struct au_pin *p)
 		err = vfsub_mnt_want_write(p->h_mnt);
 		if (unlikely(err)) {
 			au_fclr_pin(p->flags, MNT_WRITE);
-			if (!au_ftest_pin(p->flags, DI_LOCKED))
-				di_read_unlock(p->parent, AuLock_IR);
+			au_pin_di_read_unlock(p);
 			dput(p->parent);
 			p->parent = NULL;
 			goto out_err;
