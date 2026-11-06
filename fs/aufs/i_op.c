@@ -430,18 +430,14 @@ out:
 
 /* ---------------------------------------------------------------------- */
 
-static int au_wr_dir_cpup(struct dentry *dentry, struct dentry *parent,
-			  const unsigned char add_entry, aufs_bindex_t bcpup,
-			  aufs_bindex_t btop)
+/* the caller holds the dinfo lock of @parent */
+static int au_do_wr_dir_cpup(struct dentry *dentry, struct dentry *parent,
+			     const unsigned char add_entry,
+			     aufs_bindex_t bcpup, aufs_bindex_t btop)
 {
 	int err;
 	struct dentry *h_parent;
 	struct inode *h_dir;
-
-	if (add_entry)
-		IMustLock(d_inode(parent));
-	else
-		di_write_lock_parent(parent);
 
 	err = 0;
 	if (!au_h_dptr(parent, bcpup)) {
@@ -468,12 +464,31 @@ static int au_wr_dir_cpup(struct dentry *dentry, struct dentry *parent,
 		}
 	}
 
-	if (!add_entry)
-		di_write_unlock(parent);
 	if (!err)
 		err = bcpup; /* success */
 
 	AuTraceErr(err);
+	return err;
+}
+
+static int au_wr_dir_cpup(struct dentry *dentry, struct dentry *parent,
+			  const unsigned char add_entry, aufs_bindex_t bcpup,
+			  aufs_bindex_t btop)
+{
+	int err;
+
+	if (add_entry) {
+		/* the dinfo of @parent is locked by the caller */
+		IMustLock(d_inode(parent));
+		err = au_do_wr_dir_cpup(dentry, parent, add_entry, bcpup,
+					btop);
+	} else {
+		di_write_lock_parent(parent);
+		err = au_do_wr_dir_cpup(dentry, parent, add_entry, bcpup,
+					btop);
+		di_write_unlock(parent);
+	}
+
 	return err;
 }
 
@@ -1183,28 +1198,62 @@ static void au_refresh_iattr(struct inode *inode, struct kstat *st,
  * returns zero or negative (an error).
  * @dentry will be read-locked in success.
  */
-int au_h_path_getattr(struct dentry *dentry, struct inode *inode, int force,
-		      struct path *h_path, int locked)
+int au_h_path_getattr_locked(struct dentry *dentry, struct inode *inode,
+			     int force, struct path *h_path)
 {
-	int err;
-	unsigned int mnt_flags, sigen;
-	unsigned char udba_none;
+	unsigned int mnt_flags;
 	aufs_bindex_t bindex;
 	struct super_block *sb, *h_sb;
 
 	h_path->mnt = NULL;
 	h_path->dentry = NULL;
 
-	err = 0;
 	sb = dentry->d_sb;
 	mnt_flags = au_mntflags(sb);
-	udba_none = !!au_opt_test(mnt_flags, UDBA_NONE);
 
-	if (unlikely(locked))
-		goto body; /* skip locking dinfo */
+	if (!inode) {
+		inode = d_inode(dentry);
+		if (unlikely(!inode))
+			goto out;
+	}
+	bindex = au_ibtop(inode);
+	h_path->mnt = au_sbr_mnt(sb, bindex);
+	h_sb = h_path->mnt->mnt_sb;
+	if (!force
+	    && !au_test_fs_bad_iattr(h_sb)
+	    && au_opt_test(mnt_flags, UDBA_NONE))
+		goto out; /* success */
+
+	if (au_dbtop(dentry) == bindex)
+		h_path->dentry = au_h_dptr(dentry, bindex);
+	else if (au_opt_test(mnt_flags, PLINK) && au_plink_test(inode)) {
+		h_path->dentry = au_plink_lkup(inode, bindex);
+		if (IS_ERR(h_path->dentry))
+			/* pretending success */
+			h_path->dentry = NULL;
+		else
+			dput(h_path->dentry);
+	}
+
+out:
+	return 0;
+}
+
+int au_h_path_getattr(struct dentry *dentry, struct inode *inode, int force,
+		      struct path *h_path)
+{
+	int err;
+	unsigned int sigen;
+	struct super_block *sb;
+
+	h_path->mnt = NULL;
+	h_path->dentry = NULL;
+
+	err = 0;
+	sb = dentry->d_sb;
 
 	/* support fstat(2) */
-	if (!d_unlinked(dentry) && !udba_none) {
+	if (!d_unlinked(dentry) && !au_opt_test(au_mntflags(sb), UDBA_NONE)) {
 		sigen = au_sigen(sb);
 		err = au_digen_test(dentry, sigen);
 		if (!err) {
@@ -1230,30 +1279,7 @@ int au_h_path_getattr(struct dentry *dentry, struct inode *inode, int force,
 	} else
 		di_read_lock_child(dentry, AuLock_IR);
 
-body:
-	if (!inode) {
-		inode = d_inode(dentry);
-		if (unlikely(!inode))
-			goto out;
-	}
-	bindex = au_ibtop(inode);
-	h_path->mnt = au_sbr_mnt(sb, bindex);
-	h_sb = h_path->mnt->mnt_sb;
-	if (!force
-	    && !au_test_fs_bad_iattr(h_sb)
-	    && udba_none)
-		goto out; /* success */
-
-	if (au_dbtop(dentry) == bindex)
-		h_path->dentry = au_h_dptr(dentry, bindex);
-	else if (au_opt_test(mnt_flags, PLINK) && au_plink_test(inode)) {
-		h_path->dentry = au_plink_lkup(inode, bindex);
-		if (IS_ERR(h_path->dentry))
-			/* pretending success */
-			h_path->dentry = NULL;
-		else
-			dput(h_path->dentry);
-	}
+	err = au_h_path_getattr_locked(dentry, inode, force, h_path);
 
 out:
 	return err;
@@ -1275,8 +1301,7 @@ static int aufs_getattr(struct mnt_idmap *idmap, const struct path *path,
 	err = si_read_lock(sb, AuLock_FLUSH | AuLock_NOPLM);
 	if (unlikely(err))
 		goto out;
-	err = au_h_path_getattr(dentry, /*inode*/NULL, /*force*/0, &h_path,
-				/*locked*/0);
+	err = au_h_path_getattr(dentry, /*inode*/NULL, /*force*/0, &h_path);
 	if (unlikely(err))
 		goto out_si;
 	if (unlikely(!h_path.dentry))
