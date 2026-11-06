@@ -75,8 +75,34 @@ int au_do_open(struct file *file, struct au_do_open_args *args);
 int au_reopen_nondir(struct file *file);
 struct au_pin;
 int au_ready_to_write(struct file *file, loff_t len, struct au_pin *pin);
-int au_reval_and_lock_fdi(struct file *file, int (*reopen)(struct file *file),
-			  int wlock, unsigned int fi_lsc);
+/* return 0 with finfo and dinfo locked, or an error with nothing locked */
+int au_reval_and_read_lock_fdi(struct file *file,
+			       int (*reopen)(struct file *file),
+			       unsigned int fi_lsc);
+int au_reval_and_write_lock_fdi(struct file *file,
+				int (*reopen)(struct file *file),
+				unsigned int fi_lsc);
+
+/*
+ * Entry point.  @wlock must be a constant, which selects the function at
+ * compile time.  Returns 0 with the finfo and dinfo locked, or an error
+ * with nothing held.
+ */
+#define au_reval_and_lock_fdi(__file, __reopen, __wlock, __lsc) ({	\
+	struct file *_file = (__file);					\
+	int (*_reopen)(struct file *) = (__reopen);			\
+	const int _wlock = (__wlock);					\
+	unsigned int _lsc = (__lsc);					\
+	int _err;							\
+									\
+	BUILD_BUG_ON(!__builtin_constant_p(__wlock));			\
+	if (_wlock)							\
+		_err = au_reval_and_write_lock_fdi(_file, _reopen, _lsc); \
+	else								\
+		_err = au_reval_and_read_lock_fdi(_file, _reopen, _lsc); \
+	_err;								\
+})
+
 int au_do_flush(struct file *file, fl_owner_t id,
 		int (*flush)(struct file *file, fl_owner_t id));
 
