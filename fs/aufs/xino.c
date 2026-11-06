@@ -143,6 +143,20 @@ static void au_xino_unlock_dir(struct au_xino_lock_dir *ldir)
 
 /* ---------------------------------------------------------------------- */
 
+/* open @fpath, and on success dget and lock its parent dir */
+static struct file *au_xino_do_open(char *fpath, struct dentry **h_parent)
+{
+	struct file *file;
+
+	file = vfsub_filp_open(fpath, O_RDWR | O_CREAT | O_EXCL | O_LARGEFILE
+			       /* | __FMODE_NONOTIFY */,
+			       0666);
+	if (!IS_ERR(file))
+		*h_parent = au_dget_parent_lock(file->f_path.dentry,
+						AuLsc_I_PARENT);
+	return file;
+}
+
 /*
  * create and set a new xino file
  */
@@ -160,14 +174,14 @@ struct file *au_xino_create(struct super_block *sb, char *fpath, int silent,
 	 * hnotify is disabled so we have no notify events to ignore.
 	 * when a user specified the xino, we cannot get au_hdir to be ignored.
 	 */
-	if (!wbrtop)
+	if (wbrtop)
+		file = au_xino_do_open(fpath, &h_parent);
+	else {
 		mutex_lock(&mtx);
-	file = vfsub_filp_open(fpath, O_RDWR | O_CREAT | O_EXCL | O_LARGEFILE
-			       /* | __FMODE_NONOTIFY */,
-			       0666);
+		file = au_xino_do_open(fpath, &h_parent);
+		mutex_unlock(&mtx);
+	}
 	if (IS_ERR(file)) {
-		if (!wbrtop)
-			mutex_unlock(&mtx);
 		if (!silent)
 			pr_err("open %s(%ld)\n", fpath, PTR_ERR(file));
 		return file;
@@ -176,9 +190,6 @@ struct file *au_xino_create(struct super_block *sb, char *fpath, int silent,
 	/* keep file count */
 	err = 0;
 	d = file->f_path.dentry;
-	h_parent = au_dget_parent_lock(d, AuLsc_I_PARENT);
-	if (!wbrtop)
-		mutex_unlock(&mtx);
 	h_dir = d_inode(h_parent);
 	inode = file_inode(file);
 	if (vfsub_inode_nlink(inode, AU_I_BRANCH)) {
