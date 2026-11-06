@@ -207,13 +207,11 @@ int au_do_open(struct file *file, struct au_do_open_args *args)
 	struct dentry *dentry;
 	struct au_finfo *finfo;
 
-	if (!aopen)
-		err = au_finfo_init(file, args->fidir);
-	else {
+	if (aopen)
 		lockdep_off();
-		err = au_finfo_init(file, args->fidir);
+	err = au_finfo_init(file, args->fidir);
+	if (aopen)
 		lockdep_on();
-	}
 	if (unlikely(err))
 		goto out;
 
@@ -243,13 +241,11 @@ int au_do_open(struct file *file, struct au_do_open_args *args)
 		au_hbl_add(&finfo->fi_hlist,
 			   &au_sbi(file->f_path.dentry->d_sb)->si_files);
 	}
-	if (!aopen)
-		fi_write_unlock(file);
-	else {
+	if (aopen)
 		lockdep_off();
-		fi_write_unlock(file);
+	fi_write_unlock(file);
+	if (aopen)
 		lockdep_on();
-	}
 	if (unlikely(err)) {
 		finfo->fi_hdir = NULL;
 		au_finfo_fin(file);
