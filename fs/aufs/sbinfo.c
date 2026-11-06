@@ -183,6 +183,13 @@ aufs_bindex_t au_new_br_id(struct super_block *sb)
 
 /* ---------------------------------------------------------------------- */
 
+/* it is ok that new 'nwt' tasks are appended while we are sleeping */
+static void si_flush(struct super_block *sb, int flags)
+{
+	if (au_ftest_lock(flags, FLUSH))
+		au_nwt_flush(&au_sbi(sb)->si_nowait);
+}
+
 /* wait for the pseudo-link maintainer to leave, si_rwsem not held */
 static void si_plink_maint_wait(struct super_block *sb, int flags)
 {
@@ -193,53 +200,74 @@ static void si_plink_maint_wait(struct super_block *sb, int flags)
 
 	/* gave up wake_up_bit() */
 	wait_event(sbi->si_plink_wq, !sbi->si_plink_maint_pid);
-
-	if (au_ftest_lock(flags, FLUSH))
-		au_nwt_flush(&sbi->si_nowait);
+	si_flush(sb, flags);
 }
 
-/* it is ok that new 'nwt' tasks are appended while we are sleeping */
-int si_read_lock(struct super_block *sb, int flags)
+/*
+ * Never fails.  With AuLock_NOPLMW, sleeps (with si_rwsem released) while
+ * another process maintains the pseudo-links.  The si_read_lock() macro
+ * calls do_si_read_lock_noplm() instead for AuLock_NOPLM.
+ */
+void do_si_read_lock(struct super_block *sb, int flags)
+{
+	AuDebugOn(au_ftest_lock(flags, NOPLM));
+
+	si_flush(sb, flags);
+	si_noflush_read_lock(sb);
+	if (!au_ftest_lock(flags, NOPLMW))
+		return;
+	while (au_plink_maint(sb, flags)) {
+		si_read_unlock(sb);
+		si_plink_maint_wait(sb, flags);
+		si_noflush_read_lock(sb);
+	}
+}
+
+void do_si_write_lock(struct super_block *sb, int flags)
+{
+	AuDebugOn(au_ftest_lock(flags, NOPLM));
+
+	si_flush(sb, flags);
+	/* au_debug_on(); AuDbgSleep(5); au_debug_off(); */
+	si_noflush_write_lock(sb);
+	/* pr_info("here\n"); */
+	if (!au_ftest_lock(flags, NOPLMW))
+		return;
+	while (au_plink_maint(sb, flags)) {
+		si_write_unlock(sb);
+		si_plink_maint_wait(sb, flags);
+		si_noflush_write_lock(sb);
+	}
+}
+
+/*
+ * @flags must contain AuLock_NOPLM.  Returns -EAGAIN, with si_rwsem NOT
+ * held, if another process maintains the pseudo-links; 0 with it held.
+ */
+int do_si_read_lock_noplm(struct super_block *sb, int flags)
 {
 	int err;
 
-	err = 0;
-	if (au_ftest_lock(flags, FLUSH))
-		au_nwt_flush(&au_sbi(sb)->si_nowait);
+	AuDebugOn(!au_ftest_lock(flags, NOPLM));
 
+	si_flush(sb, flags);
 	si_noflush_read_lock(sb);
 	err = au_plink_maint(sb, flags);
-	if (unlikely(err) && au_ftest_lock(flags, NOPLMW)) {
-		do {
-			si_read_unlock(sb);
-			si_plink_maint_wait(sb, flags);
-			si_noflush_read_lock(sb);
-			err = au_plink_maint(sb, flags);
-		} while (unlikely(err));
-	}
 	if (unlikely(err))
 		si_read_unlock(sb);
 
 	return err;
 }
 
-int si_write_lock(struct super_block *sb, int flags)
+int do_si_write_lock_noplm(struct super_block *sb, int flags)
 {
 	int err;
 
-	if (au_ftest_lock(flags, FLUSH))
-		au_nwt_flush(&au_sbi(sb)->si_nowait);
+	AuDebugOn(!au_ftest_lock(flags, NOPLM));
 
+	si_flush(sb, flags);
 	si_noflush_write_lock(sb);
 	err = au_plink_maint(sb, flags);
-	if (unlikely(err) && au_ftest_lock(flags, NOPLMW)) {
-		do {
-			si_write_unlock(sb);
-			si_plink_maint_wait(sb, flags);
-			si_noflush_write_lock(sb);
-			err = au_plink_maint(sb, flags);
-		} while (unlikely(err));
-	}
 	if (unlikely(err))
 		si_write_unlock(sb);
 
@@ -253,9 +281,14 @@ int aufs_read_lock(struct dentry *dentry, int flags)
 	struct super_block *sb;
 
 	sb = dentry->d_sb;
-	err = si_read_lock(sb, flags);
-	if (unlikely(err))
-		goto out;
+	if (au_ftest_lock(flags, NOPLM)) {
+		err = do_si_read_lock_noplm(sb, flags);
+		if (unlikely(err))
+			goto out;
+	} else {
+		err = 0;
+		do_si_read_lock(sb, flags);
+	}
 
 	if (au_ftest_lock(flags, DW))
 		di_write_lock_child(dentry);
@@ -287,7 +320,7 @@ void aufs_read_unlock(struct dentry *dentry, int flags)
 
 void aufs_write_lock(struct dentry *dentry)
 {
-	si_write_lock(dentry->d_sb, AuLock_FLUSH | AuLock_NOPLMW);
+	do_si_write_lock(dentry->d_sb, AuLock_FLUSH | AuLock_NOPLMW);
 	di_write_lock_child(dentry);
 }
 
@@ -304,9 +337,14 @@ int aufs_read_and_write_lock2(struct dentry *d1, struct dentry *d2, int flags)
 	struct super_block *sb;
 
 	sb = d1->d_sb;
-	err = si_read_lock(sb, flags);
-	if (unlikely(err))
-		goto out;
+	if (au_ftest_lock(flags, NOPLM)) {
+		err = do_si_read_lock_noplm(sb, flags);
+		if (unlikely(err))
+			goto out;
+	} else {
+		err = 0;
+		do_si_read_lock(sb, flags);
+	}
 
 	di_write_lock2_child(d1, d2, au_ftest_lock(flags, DIRS));
 

@@ -696,9 +696,7 @@ static int aufs_encode_fh(struct inode *inode, __u32 *fh, int *max_len,
 
 	h_parent = NULL;
 	sb = inode->i_sb;
-	err = si_read_lock(sb, AuLock_FLUSH);
-	if (unlikely(err))
-		goto out;
+	si_read_lock(sb, AuLock_FLUSH);
 
 #ifdef CONFIG_AUFS_DEBUG
 	if (unlikely(!au_opt_test(au_mntflags(sb), XINO)))
