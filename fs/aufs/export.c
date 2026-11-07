@@ -298,16 +298,14 @@ out:
 struct au_nfsd_si_lock {
 	unsigned int sigen;
 	aufs_bindex_t bindex, br_id;
-	unsigned char force_lock;
 };
 
-static int si_nfsd_read_lock(struct super_block *sb,
-			     struct au_nfsd_si_lock *nsi_lock)
+/* called with si_rwsem read-locked */
+static int si_nfsd_test_br(struct super_block *sb,
+			   struct au_nfsd_si_lock *nsi_lock)
 {
 	int err;
 	aufs_bindex_t bindex;
-
-	si_read_lock(sb, AuLock_FLUSH);
 
 	/* branch id may be wrapped around */
 	err = 0;
@@ -317,12 +315,35 @@ static int si_nfsd_read_lock(struct super_block *sb,
 
 	err = -ESTALE;
 	bindex = -1;
-	if (!nsi_lock->force_lock)
-		si_read_unlock(sb);
 
 out:
 	nsi_lock->bindex = bindex;
 	return err;
+}
+
+/* returns 0 with si_rwsem read-locked, or -ESTALE with nothing locked */
+static int si_nfsd_read_lock(struct super_block *sb,
+			     struct au_nfsd_si_lock *nsi_lock)
+{
+	int err;
+
+	si_read_lock(sb, AuLock_FLUSH);
+	err = si_nfsd_test_br(sb, nsi_lock);
+	if (unlikely(err))
+		si_read_unlock(sb);
+
+	return err;
+}
+
+/*
+ * re-acquire si_rwsem after it was released temporarily.  Returns with it
+ * read-locked even if the branch has gone (-ESTALE).
+ */
+static int si_nfsd_relock(struct super_block *sb,
+			  struct au_nfsd_si_lock *nsi_lock)
+{
+	si_read_lock(sb, AuLock_FLUSH);
+	return si_nfsd_test_br(sb, nsi_lock);
 }
 
 struct find_name_by_ino {
@@ -350,8 +371,8 @@ find_name_by_ino(struct dir_context *ctx, const char *name, int namelen,
 	return false;
 }
 
-static struct dentry *au_lkup_by_ino(struct path *path, ino_t ino,
-				     struct au_nfsd_si_lock *nsi_lock)
+/* look up the entry whose inode number is @ino in the dir @path */
+static struct dentry *au_do_lkup_by_ino(struct path *path, ino_t ino)
 {
 	struct dentry *dentry, *parent;
 	struct file *file;
@@ -364,8 +385,6 @@ static struct dentry *au_lkup_by_ino(struct path *path, ino_t ino,
 	int err;
 
 	parent = path->dentry;
-	if (nsi_lock)
-		si_read_unlock(parent->d_sb);
 	file = vfsub_dentry_open(path, au_dir_roflags);
 	dentry = (void *)file;
 	if (IS_ERR(file))
@@ -407,12 +426,23 @@ out_name:
 out_file:
 	fput(file);
 out:
-	if (unlikely(nsi_lock
-		     && si_nfsd_read_lock(parent->d_sb, nsi_lock) < 0))
-		if (!IS_ERR(dentry)) {
-			dput(dentry);
-			dentry = ERR_PTR(-ESTALE);
-		}
+	AuTraceErrPtr(dentry);
+	return dentry;
+}
+
+/* called with si_rwsem read-locked, which is released during the lookup */
+static struct dentry *au_lkup_by_ino(struct path *path, ino_t ino,
+				     struct au_nfsd_si_lock *nsi_lock)
+{
+	struct dentry *dentry;
+	struct super_block *sb = path->dentry->d_sb;
+
+	si_read_unlock(sb);
+	dentry = au_do_lkup_by_ino(path, ino);
+	if (unlikely(si_nfsd_relock(sb, nsi_lock) < 0) && !IS_ERR(dentry)) {
+		dput(dentry);
+		dentry = ERR_PTR(-ESTALE);
+	}
 	AuTraceErrPtr(dentry);
 	return dentry;
 }
@@ -553,18 +583,17 @@ struct dentry *decode_by_path(struct super_block *sb, ino_t ino, __u32 *fh,
 		goto out_path;
 
 	if (ino != d_inode(path.dentry)->i_ino)
-		dentry = au_lkup_by_ino(&path, ino, /*nsi_lock*/NULL);
+		dentry = au_do_lkup_by_ino(&path, ino);
 	else
 		dentry = dget(path.dentry);
 
 out_path:
 	path_put(&path);
 out_relock:
-	if (unlikely(si_nfsd_read_lock(sb, nsi_lock) < 0))
-		if (!IS_ERR(dentry)) {
-			dput(dentry);
-			dentry = ERR_PTR(-ESTALE);
-		}
+	if (unlikely(si_nfsd_relock(sb, nsi_lock) < 0) && !IS_ERR(dentry)) {
+		dput(dentry);
+		dentry = ERR_PTR(-ESTALE);
+	}
 out_pathname:
 	free_page((unsigned long)pathname);
 out_h_parent:
@@ -584,9 +613,7 @@ aufs_fh_to_dentry(struct super_block *sb, struct fid *fid, int fh_len,
 	__u32 *fh = fid->raw;
 	struct au_branch *br;
 	ino_t ino, dir_ino;
-	struct au_nfsd_si_lock nsi_lock = {
-		.force_lock	= 0
-	};
+	struct au_nfsd_si_lock nsi_lock = {};
 
 	dentry = ERR_PTR(-ESTALE);
 	/* it should never happen, but the file handle is unreliable */
@@ -599,7 +626,6 @@ aufs_fh_to_dentry(struct super_block *sb, struct fid *fid, int fh_len,
 	br = NULL;
 	if (unlikely(si_nfsd_read_lock(sb, &nsi_lock)))
 		goto out;
-	nsi_lock.force_lock = 1;
 
 	/* is this inode still cached? */
 	ino = decode_ino(fh + Fh_ino);
