@@ -41,8 +41,8 @@ static int epilog(struct inode *dir, aufs_bindex_t bindex,
 			goto out;
 	}
 
-	inode = au_new_inode(dentry, /*must_new*/1);
-	if (!IS_ERR(inode)) {
+	err = au_new_inode(dentry, /*must_new*/1, &inode);
+	if (!err) {
 		d_instantiate(dentry, inode);
 		dir = d_inode(dentry->d_parent); /* dir inode is locked */
 		IMustLock(dir);
@@ -52,7 +52,6 @@ static int epilog(struct inode *dir, aufs_bindex_t bindex,
 		return 0; /* success */
 	}
 
-	err = PTR_ERR(inode);
 	if (!wh_dentry)
 		goto out;
 
@@ -227,8 +226,17 @@ struct simple_arg {
 	} u;
 };
 
-static int add_simple(struct inode *dir, struct dentry *dentry,
-		      struct simple_arg *arg)
+/* to reduce stack size */
+struct au_add_simple_a {
+	struct au_dtime dt;
+	struct au_pin pin;
+	struct path h_path;
+	struct au_wr_dir_args wr_dir_args;
+};
+
+/* called with the dinfo of @dentry and its parent write-locked */
+static int au_do_add_simple(struct inode *dir, struct dentry *dentry,
+			    struct simple_arg *arg, struct au_add_simple_a *a)
 {
 	int err, rerr;
 	aufs_bindex_t btop;
@@ -236,44 +244,16 @@ static int add_simple(struct inode *dir, struct dentry *dentry,
 	const unsigned char try_aopen
 		= (arg->type == Creat && arg->u.c.try_aopen);
 	struct vfsub_aopen_args *aopen = arg->u.c.aopen;
-	struct dentry *wh_dentry, *parent;
+	struct dentry *wh_dentry;
 	struct inode *h_dir;
 	struct super_block *sb;
 	struct au_branch *br;
-	/* to reduce stack size */
-	struct {
-		struct au_dtime dt;
-		struct au_pin pin;
-		struct path h_path;
-		struct au_wr_dir_args wr_dir_args;
-	} *a;
 
-	AuDbg("%pd\n", dentry);
-	IMustLock(dir);
-
-	err = -ENOMEM;
-	a = kmalloc(sizeof(*a), GFP_NOFS);
-	if (unlikely(!a))
-		goto out;
-	a->wr_dir_args.force_btgt = -1;
-	a->wr_dir_args.flags = AuWrDir_ADD_ENTRY;
-
-	parent = dentry->d_parent; /* dir inode is locked */
-	if (!try_aopen) {
-		err = aufs_read_lock(dentry, AuLock_DW | AuLock_GEN);
-		if (unlikely(err))
-			goto out_free;
-	}
-	err = au_d_may_add(dentry);
-	if (unlikely(err))
-		goto out_unlock;
-	if (!try_aopen)
-		di_write_lock_parent(parent);
 	wh_dentry = lock_hdir_lkup_wh(dentry, &a->dt, /*src_dentry*/NULL,
 				      &a->pin, &a->wr_dir_args);
 	err = PTR_ERR(wh_dentry);
 	if (IS_ERR(wh_dentry))
-		goto out_parent;
+		goto out;
 
 	btop = au_dbtop(dentry);
 	sb = dentry->d_sb;
@@ -335,16 +315,57 @@ static int add_simple(struct inode *dir, struct dentry *dentry,
 out_unpin:
 	au_unpin(&a->pin);
 	dput(wh_dentry);
-out_parent:
-	if (!try_aopen)
+out:
+	return err;
+}
+
+static int add_simple(struct inode *dir, struct dentry *dentry,
+		      struct simple_arg *arg)
+{
+	int err;
+	const unsigned char try_aopen
+		= (arg->type == Creat && arg->u.c.try_aopen);
+	struct dentry *parent;
+	struct au_add_simple_a *a;
+
+	AuDbg("%pd\n", dentry);
+	IMustLock(dir);
+
+	err = -ENOMEM;
+	a = kmalloc(sizeof(*a), GFP_NOFS);
+	if (unlikely(!a))
+		goto out;
+	a->wr_dir_args.force_btgt = -1;
+	a->wr_dir_args.flags = AuWrDir_ADD_ENTRY;
+
+	parent = dentry->d_parent; /* dir inode is locked */
+	if (try_aopen) {
+		/* aufs_atomic_open() holds the dinfo locks */
+		err = au_d_may_add(dentry);
+		if (!err)
+			err = au_do_add_simple(dir, dentry, arg, a);
+		if (unlikely(err)) {
+			au_update_dbtop(dentry);
+			d_drop(dentry);
+		}
+		goto out_free;
+	}
+
+	err = aufs_read_lock(dentry, AuLock_DW | AuLock_GEN);
+	if (unlikely(err))
+		goto out_free;
+	err = au_d_may_add(dentry);
+	if (!err) {
+		di_write_lock_parent(parent);
+		err = au_do_add_simple(dir, dentry, arg, a);
 		di_write_unlock(parent);
-out_unlock:
+	}
 	if (unlikely(err)) {
 		au_update_dbtop(dentry);
 		d_drop(dentry);
 	}
-	if (!try_aopen)
-		aufs_read_unlock(dentry, AuLock_DW);
+	aufs_read_unlock(dentry, AuLock_DW);
+
 out_free:
 	au_kfree_rcu(a);
 out:
@@ -480,9 +501,8 @@ int aufs_tmpfile(struct mnt_idmap *idmap, struct inode *dir,
 	au_set_dbtop(dentry, bindex);
 	au_set_dbbot(dentry, bindex);
 	au_set_h_dptr(dentry, bindex, dget(h_dentry));
-	inode = au_new_inode(dentry, /*must_new*/1);
-	if (IS_ERR(inode)) {
-		err = PTR_ERR(inode);
+	err = au_new_inode(dentry, /*must_new*/1, &inode);
+	if (unlikely(err)) {
 		au_set_h_dptr(dentry, bindex, NULL);
 		au_set_dbtop(dentry, -1);
 		au_set_dbbot(dentry, -1);
