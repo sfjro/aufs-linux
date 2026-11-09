@@ -154,14 +154,15 @@ static int dbgaufs_plink_open(struct inode *inode, struct file *file)
 		strscpy(p->a, str, sizeof(str));
 #undef str
 	}
-	si_read_unlock(sb);
 
 	err = 0;
 	file->private_data = p;
-	goto out; /* success */
+	goto out_unlock; /* success */
 
 out_free:
 	free_page((unsigned long)p);
+out_unlock:
+	si_read_unlock(sb);
 out:
 	return err;
 }

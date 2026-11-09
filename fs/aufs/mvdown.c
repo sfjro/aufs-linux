@@ -650,9 +650,7 @@ int au_mvdown(struct dentry *dentry, struct aufs_mvdown __user *uarg)
 	}
 
 	inode_lock_nested(inode, I_MUTEX_CHILD);
-	err = aufs_read_lock(dentry, AuLock_DW | AuLock_FLUSH | AuLock_NOPLMW);
-	if (unlikely(err))
-		goto out_inode;
+	aufs_read_lock(dentry, AuLock_DW | AuLock_FLUSH | AuLock_NOPLMW);
 
 	di_write_lock_parent(args->parent);
 	err = au_mvd_args(dmsg, args);
@@ -672,7 +670,6 @@ int au_mvdown(struct dentry *dentry, struct aufs_mvdown __user *uarg)
 out_parent:
 	di_write_unlock(args->parent);
 	aufs_read_unlock(dentry, AuLock_DW);
-out_inode:
 	inode_unlock(inode);
 out_dir:
 	inode_unlock(args->dir);
