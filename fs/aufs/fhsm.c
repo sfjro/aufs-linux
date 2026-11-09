@@ -72,8 +72,9 @@ static void au_fhsm_notify(struct super_block *sb, int val)
 	}
 }
 
+/* called with br->br_fhsm->bf_lock held */
 static int au_fhsm_stfs(struct super_block *sb, aufs_bindex_t bindex,
-			struct aufs_stfs *rstfs, int do_lock, int do_notify)
+			struct aufs_stfs *rstfs, int do_notify)
 {
 	int err;
 	struct au_branch *br;
@@ -84,10 +85,7 @@ static int au_fhsm_stfs(struct super_block *sb, aufs_bindex_t bindex,
 	bf = br->br_fhsm;
 	AuDebugOn(!bf);
 
-	if (do_lock)
-		mutex_lock(&bf->bf_lock);
-	else
-		MtxMustLock(&bf->bf_lock);
+	MtxMustLock(&bf->bf_lock);
 
 	/* sb->s_root for NFS is unreliable */
 	err = au_br_stfs(br, &bf->bf_stfs);
@@ -104,8 +102,6 @@ static int au_fhsm_stfs(struct super_block *sb, aufs_bindex_t bindex,
 		*rstfs = bf->bf_stfs;
 
 out:
-	if (do_lock)
-		mutex_unlock(&bf->bf_lock);
 	au_fhsm_notify(sb, /*val*/1);
 
 	return err;
@@ -135,8 +131,7 @@ void au_fhsm_wrote(struct super_block *sb, aufs_bindex_t bindex, int force)
 	if (force
 	    || au_fhsm_pid(fhsm)
 	    || au_fhsm_test_jiffy(sbinfo, br))
-		err = au_fhsm_stfs(sb, bindex, /*rstfs*/NULL, /*do_lock*/0,
-				  /*do_notify*/1);
+		err = au_fhsm_stfs(sb, bindex, /*rstfs*/NULL, /*do_notify*/1);
 	mutex_unlock(&bf->bf_lock);
 }
 

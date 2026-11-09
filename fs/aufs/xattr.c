@@ -219,48 +219,59 @@ struct au_lgxattr {
 	} u;
 };
 
-static ssize_t au_lgxattr(struct dentry *dentry, struct inode *inode,
-			  struct au_lgxattr *arg)
+/* the caller holds the dinfo lock of the dentry @h_path came from */
+static ssize_t au_do_lgxattr(struct path *h_path, struct au_lgxattr *arg)
 {
 	ssize_t err;
-	int reenter;
-	struct path h_path;
-	struct super_block *sb;
 
-	sb = dentry->d_sb;
-	reenter = au_smack_reentering(sb);
-	if (!reenter) {
-		err = si_read_lock(sb, AuLock_FLUSH | AuLock_NOPLM);
-		if (unlikely(err))
-			goto out;
-	}
-	err = au_h_path_getattr(dentry, inode, /*force*/1, &h_path, reenter);
-	if (unlikely(err))
-		goto out_si;
-	if (unlikely(!h_path.dentry))
+	err = 0;
+	if (unlikely(!h_path->dentry))
 		/* illegally overlapped or something */
-		goto out_di; /* pretending success */
+		goto out; /* pretending success */
 
 	/* always topmost entry only */
 	switch (arg->type) {
 	case AU_XATTR_LIST:
-		err = vfs_listxattr(h_path.dentry,
+		err = vfs_listxattr(h_path->dentry,
 				    arg->u.list.list, arg->u.list.size);
 		break;
 	case AU_XATTR_GET:
-		AuDebugOn(d_is_negative(h_path.dentry));
-		err = vfs_getxattr(mnt_idmap(h_path.mnt), h_path.dentry,
+		AuDebugOn(d_is_negative(h_path->dentry));
+		err = vfs_getxattr(mnt_idmap(h_path->mnt), h_path->dentry,
 				   arg->u.get.name, arg->u.get.value,
 				   arg->u.get.size);
 		break;
 	}
 
-out_di:
-	if (!reenter)
+out:
+	return err;
+}
+
+static ssize_t au_lgxattr(struct dentry *dentry, struct inode *inode,
+			  struct au_lgxattr *arg)
+{
+	ssize_t err;
+	struct path h_path;
+	struct super_block *sb;
+
+	sb = dentry->d_sb;
+	if (au_smack_reentering(sb)) {
+		/* locks held by the aufs operation we re-entered from */
+		au_h_path_getattr_locked(dentry, inode, /*force*/1, &h_path);
+		err = au_do_lgxattr(&h_path, arg);
+		goto out;
+	}
+
+	err = si_read_lock(sb, AuLock_FLUSH | AuLock_NOPLM);
+	if (unlikely(err))
+		goto out;
+	err = au_h_path_getattr(dentry, inode, /*force*/1, &h_path);
+	if (!err) {
+		err = au_do_lgxattr(&h_path, arg);
 		di_read_unlock(dentry, AuLock_IR);
-out_si:
-	if (!reenter)
-		si_read_unlock(sb);
+	}
+	si_read_unlock(sb);
+
 out:
 	AuTraceErr(err);
 	return err;
