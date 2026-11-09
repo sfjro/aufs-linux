@@ -715,6 +715,44 @@ static int au_opt_xino(struct super_block *sb, struct au_opt *opt,
 	return err;
 }
 
+/*
+ * whether the whiteout bases of @br need no (re-)initialization.
+ * called with br->br_wbr (if any) read-locked.
+ */
+static unsigned char au_opts_verify_skip(struct au_branch *br,
+					 unsigned char do_plink)
+{
+	unsigned char skip;
+	struct au_wbr *wbr = br->br_wbr;
+
+	if (!au_br_writable(br->br_perm)) {
+		skip = (!wbr
+			|| (!wbr->wbr_whbase
+			    && !wbr->wbr_plink
+			    && !wbr->wbr_orph));
+	} else if (!au_br_wh_linkable(br->br_perm)) {
+		/* skip = (!br->br_whbase && !br->br_orph); */
+		skip = (!wbr || !wbr->wbr_whbase);
+		if (skip && wbr) {
+			if (do_plink)
+				skip = !!wbr->wbr_plink;
+			else
+				skip = !wbr->wbr_plink;
+		}
+	} else {
+		/* skip = (br->br_whbase && br->br_ohph); */
+		skip = (wbr && wbr->wbr_whbase);
+		if (skip) {
+			if (do_plink)
+				skip = !!wbr->wbr_plink;
+			else
+				skip = !wbr->wbr_plink;
+		}
+	}
+
+	return skip;
+}
+
 int au_opts_verify(struct super_block *sb, unsigned long sb_flags,
 		   unsigned int pending)
 {
@@ -770,38 +808,14 @@ int au_opts_verify(struct super_block *sb, unsigned long sb_flags,
 			br->br_perm &= ~AuBrAttr_ICEX_SEC;
 #endif
 
-		do_free = 0;
 		wbr = br->br_wbr;
-		if (wbr)
+		do_free = !au_br_writable(br->br_perm) && wbr;
+		if (wbr) {
 			wbr_wh_read_lock(wbr);
-
-		if (!au_br_writable(br->br_perm)) {
-			do_free = !!wbr;
-			skip = (!wbr
-				|| (!wbr->wbr_whbase
-				    && !wbr->wbr_plink
-				    && !wbr->wbr_orph));
-		} else if (!au_br_wh_linkable(br->br_perm)) {
-			/* skip = (!br->br_whbase && !br->br_orph); */
-			skip = (!wbr || !wbr->wbr_whbase);
-			if (skip && wbr) {
-				if (do_plink)
-					skip = !!wbr->wbr_plink;
-				else
-					skip = !wbr->wbr_plink;
-			}
-		} else {
-			/* skip = (br->br_whbase && br->br_ohph); */
-			skip = (wbr && wbr->wbr_whbase);
-			if (skip) {
-				if (do_plink)
-					skip = !!wbr->wbr_plink;
-				else
-					skip = !wbr->wbr_plink;
-			}
-		}
-		if (wbr)
+			skip = au_opts_verify_skip(br, do_plink);
 			wbr_wh_read_unlock(wbr);
+		} else
+			skip = au_opts_verify_skip(br, do_plink);
 
 		if (can_no_dreval) {
 			dentry = br->br_path.dentry;
@@ -822,11 +836,12 @@ int au_opts_verify(struct super_block *sb, unsigned long sb_flags,
 
 		hdir = au_hi(dir, bindex);
 		au_hn_inode_lock_nested(hdir, AuLsc_I_PARENT);
-		if (wbr)
+		if (wbr) {
 			wbr_wh_write_lock(wbr);
-		err = au_wh_init(br, sb);
-		if (wbr)
+			err = au_wh_init(br, sb);
 			wbr_wh_write_unlock(wbr);
+		} else
+			err = au_wh_init(br, sb);
 		au_hn_inode_unlock(hdir);
 
 		if (!err && do_free) {
