@@ -270,14 +270,88 @@ int au_sbr_realloc(struct au_sbinfo *sbinfo, int nbr, int may_shrink);
 unsigned int au_sigen_inc(struct super_block *sb);
 aufs_bindex_t au_new_br_id(struct super_block *sb);
 
-int si_read_lock(struct super_block *sb, int flags);
-int si_write_lock(struct super_block *sb, int flags);
-int aufs_read_lock(struct dentry *dentry, int flags);
-void aufs_read_unlock(struct dentry *dentry, int flags);
+void do_si_read_lock(struct super_block *sb, int flags);
+void do_si_write_lock(struct super_block *sb, int flags);
+int do_si_read_lock_noplm(struct super_block *sb, int flags);
+int do_si_write_lock_noplm(struct super_block *sb, int flags);
+
+/*
+ * Entry points of si_rwsem.  @flags must be a constant, which selects the
+ * function at compile time, so that each of them has a fixed contract:
+ * with AuLock_NOPLM it may fail with -EAGAIN and nothing held, otherwise
+ * it never fails.
+ */
+#define si_read_lock(__sb, __flags) ({					\
+	struct super_block *_sb = (__sb);				\
+	const int _flags = (__flags);					\
+	int _err = 0;							\
+									\
+	BUILD_BUG_ON(!__builtin_constant_p(__flags));			\
+	if (au_ftest_lock(_flags, NOPLM))				\
+		_err = do_si_read_lock_noplm(_sb, _flags);		\
+	else								\
+		do_si_read_lock(_sb, _flags);				\
+	_err;								\
+})
+
+#define si_write_lock(__sb, __flags) ({					\
+	struct super_block *_sb = (__sb);				\
+	const int _flags = (__flags);					\
+	int _err = 0;							\
+									\
+	BUILD_BUG_ON(!__builtin_constant_p(__flags));			\
+	if (au_ftest_lock(_flags, NOPLM))				\
+		_err = do_si_write_lock_noplm(_sb, _flags);		\
+	else								\
+		do_si_write_lock(_sb, _flags);				\
+	_err;								\
+})
+
+void do_aufs_read_lock(struct dentry *dentry, int flags);
+void do_aufs_read_lock_dw(struct dentry *dentry, int flags);
+int do_aufs_read_lock_gen_noplm(struct dentry *dentry, int flags);
+int do_aufs_read_lock_gen_noplm_dw(struct dentry *dentry, int flags);
+void do_aufs_read_unlock(struct dentry *dentry, int flags);
+void do_aufs_read_unlock_dw(struct dentry *dentry, int flags);
 void aufs_write_lock(struct dentry *dentry);
 void aufs_write_unlock(struct dentry *dentry);
 int aufs_read_and_write_lock2(struct dentry *d1, struct dentry *d2, int flags);
 void aufs_read_and_write_unlock2(struct dentry *d1, struct dentry *d2);
+
+/*
+ * Entry points of aufs_read_{lock,unlock}().  @flags must be a constant,
+ * which selects the function at compile time.  AuLock_DW write-locks the
+ * dinfo instead of read-locking it.  With AuLock_GEN or AuLock_NOPLM,
+ * aufs_read_lock() may fail with nothing held, otherwise it never fails.
+ */
+#define aufs_read_lock(__d, __flags) ({					\
+	struct dentry *_d = (__d);					\
+	const int _flags = (__flags);					\
+	int _err = 0;							\
+									\
+	BUILD_BUG_ON(!__builtin_constant_p(__flags));			\
+	if (au_ftest_lock(_flags, GEN) || au_ftest_lock(_flags, NOPLM)) { \
+		if (au_ftest_lock(_flags, DW))				\
+			_err = do_aufs_read_lock_gen_noplm_dw(_d, _flags); \
+		else							\
+			_err = do_aufs_read_lock_gen_noplm(_d, _flags);	\
+	} else if (au_ftest_lock(_flags, DW))				\
+		do_aufs_read_lock_dw(_d, _flags);			\
+	else								\
+		do_aufs_read_lock(_d, _flags);				\
+	_err;								\
+})
+
+#define aufs_read_unlock(__d, __flags) do {				\
+	struct dentry *_d = (__d);					\
+	const int _flags = (__flags);					\
+									\
+	BUILD_BUG_ON(!__builtin_constant_p(__flags));			\
+	if (au_ftest_lock(_flags, DW))					\
+		do_aufs_read_unlock_dw(_d, _flags);			\
+	else								\
+		do_aufs_read_unlock(_d, _flags);			\
+} while (0)
 
 /* wbr_policy.c */
 extern struct au_wbr_copyup_operations au_wbr_copyup_ops[];
