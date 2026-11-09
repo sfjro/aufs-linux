@@ -53,11 +53,11 @@ static inline void au_kfree_do_rcu(const void *p)
 	kfree_rcu(a, rcu);
 }
 
-#define au_kfree_rcu(_p) do {						\
-		typeof(_p) p = (_p);					\
-		BUILD_BUG_ON(sizeof(*p) < sizeof(struct rcu_head));	\
-		if (p)							\
-			au_kfree_do_rcu(p);				\
+#define au_kfree_rcu(__p) do {						\
+		typeof(__p) _p = (__p);					\
+		BUILD_BUG_ON(sizeof(*_p) < sizeof(struct rcu_head));	\
+		if (_p)							\
+			au_kfree_do_rcu(_p);				\
 	} while (0)
 
 #define au_kfree_do_sz_test(sz)	(sz >= sizeof(struct rcu_head))
