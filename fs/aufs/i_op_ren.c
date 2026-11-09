@@ -931,6 +931,47 @@ static void au_ren_rev_dt(int err, struct au_ren_args *a)
 
 /* ---------------------------------------------------------------------- */
 
+/*
+ * The dst parent dinfo is write-locked through the rename, and the src
+ * parent too when they differ (ISSAMEDIR is cleared).
+ */
+
+/*
+ * called with the dst parent write-locked, returns with both parents
+ * write-locked.
+ */
+static int au_ren_need_wh_diffdir(struct au_ren_args *a)
+{
+	int err;
+
+	/*
+	 * this temporary unlock is safe,
+	 * because both dir->i_mutex are locked.
+	 */
+	di_write_unlock(a->dst_parent);
+	AuDebugOn(a->src_parent == a->dst_dentry);
+	AuDebugOn(d_inode(a->src_parent) == d_inode(a->dst_dentry));
+	AuDebugOn(a->src_parent == a->src_dentry);
+	AuDebugOn(d_inode(a->src_parent) == d_inode(a->src_dentry));
+	di_write_lock_parent(a->src_parent);
+	err = au_wr_dir_need_wh(a->src_dentry,
+				au_ftest_ren(a->auren_flags, ISDIR_SRC),
+				&a->btgt);
+	di_write_unlock(a->src_parent);
+	di_write_lock2_parent(a->src_parent, a->dst_parent, /*isdir*/1);
+	au_fclr_ren(a->auren_flags, ISSAMEDIR);
+
+	return err;
+}
+
+static void au_ren_unlock_parents(struct au_ren_args *a)
+{
+	if (au_ftest_ren(a->auren_flags, ISSAMEDIR))
+		di_write_unlock(a->dst_parent);
+	else
+		di_write_unlock2(a->src_parent, a->dst_parent);
+}
+
 int aufs_rename(struct mnt_idmap *idmap,
 		struct inode *_src_dir, struct dentry *_src_dentry,
 		struct inode *_dst_dir, struct dentry *_dst_dentry,
@@ -1059,22 +1100,9 @@ int aufs_rename(struct mnt_idmap *idmap,
 
 	err = 0;
 	if (!a->exchange) {
-		if (a->src_dir != a->dst_dir) {
-			/*
-			 * this temporary unlock is safe,
-			 * because both dir->i_mutex are locked.
-			 */
-			di_write_unlock(a->dst_parent);
-			di_write_lock_parent(a->src_parent);
-			err = au_wr_dir_need_wh(a->src_dentry,
-						au_ftest_ren(a->auren_flags,
-							     ISDIR_SRC),
-						&a->btgt);
-			di_write_unlock(a->src_parent);
-			di_write_lock2_parent(a->src_parent, a->dst_parent,
-					      /*isdir*/1);
-			au_fclr_ren(a->auren_flags, ISSAMEDIR);
-		} else
+		if (a->src_dir != a->dst_dir)
+			err = au_ren_need_wh_diffdir(a);
+		else
 			err = au_wr_dir_need_wh(a->src_dentry,
 						au_ftest_ren(a->auren_flags,
 							     ISDIR_SRC),
@@ -1212,10 +1240,7 @@ out_parent:
 		if (!a->dst_inode)
 			d_drop(a->dst_dentry);
 	}
-	if (au_ftest_ren(a->auren_flags, ISSAMEDIR))
-		di_write_unlock(a->dst_parent);
-	else
-		di_write_unlock2(a->src_parent, a->dst_parent);
+	au_ren_unlock_parents(a);
 out_unlock:
 	aufs_read_and_write_unlock2(a->dst_dentry, a->src_dentry);
 out_free:
