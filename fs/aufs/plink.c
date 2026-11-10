@@ -65,19 +65,12 @@ int au_plink_maint(struct super_block *sb, int flags)
 	}
 	rcu_read_unlock();
 
-	if (au_ftest_lock(flags, NOPLMW)) {
-		/* if there is no i_mutex lock in VFS, we don't need to wait */
-		/* AuDebugOn(!lockdep_depth(current)); */
-		while (sbi->si_plink_maint_pid) {
-			si_read_unlock(sb);
-			/* gave up wake_up_bit() */
-			wait_event(sbi->si_plink_wq, !sbi->si_plink_maint_pid);
-
-			if (au_ftest_lock(flags, FLUSH))
-				au_nwt_flush(&sbi->si_nowait);
-			si_noflush_read_lock(sb);
-		}
-	} else if (au_ftest_lock(flags, NOPLM)) {
+	/*
+	 * Another process is maintaining the pseudo-links.  Only report it;
+	 * waiting (AuLock_NOPLMW) is done by si_{read,write}_lock(), which
+	 * know whether si_rwsem is held shared or exclusive.
+	 */
+	if (au_ftest_lock(flags, NOPLMW) || au_ftest_lock(flags, NOPLM)) {
 		AuDbg("ppid %d, pid %d\n", ppid, pid);
 		err = -EAGAIN;
 	}
