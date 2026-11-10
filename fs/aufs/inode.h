@@ -143,7 +143,8 @@ int au_refresh_hinode_self(struct inode *inode);
 int au_refresh_hinode(struct inode *inode, struct dentry *dentry);
 int au_ino(struct super_block *sb, aufs_bindex_t bindex, ino_t h_ino,
 	   unsigned int d_type, ino_t *ino);
-struct inode *au_new_inode(struct dentry *dentry, int must_new);
+/* returns 0 with the iinfo of the new *inode write-locked */
+int au_new_inode(struct dentry *dentry, int must_new, struct inode **inode);
 int au_test_ro(struct super_block *sb, aufs_bindex_t bindex,
 	       struct inode *inode);
 int au_test_h_perm(const struct mnt_idmap *h_idmap, struct inode *h_inode,
@@ -218,8 +219,12 @@ struct au_icpup_args {
 int au_pin_and_icpup(struct dentry *dentry, struct iattr *ia,
 		     struct au_icpup_args *a);
 
+/* returns 0 with the dinfo read-locked, or an error with nothing locked */
 int au_h_path_getattr(struct dentry *dentry, struct inode *inode, int force,
-		      struct path *h_path, int locked);
+		      struct path *h_path);
+/* the caller already holds the dinfo lock */
+int au_h_path_getattr_locked(struct dentry *dentry, struct inode *inode,
+			     int force, struct path *h_path);
 
 /* i_op_add.c */
 int au_may_add(struct dentry *dentry, aufs_bindex_t bindex,

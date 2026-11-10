@@ -357,7 +357,8 @@ out:
 
 /* successful returns with iinfo write_locked */
 /* todo: return with unlocked? */
-struct inode *au_new_inode(struct dentry *dentry, int must_new)
+/* returns the inode iinfo write-locked, or an error */
+static struct inode *au_do_new_inode(struct dentry *dentry, int must_new)
 {
 	struct inode *inode, *h_inode;
 	struct dentry *h_dentry;
@@ -472,6 +473,14 @@ out_xinondir:
 		au_xinondir_leave(sb, btop, h_ino, idx);
 out:
 	return inode;
+}
+
+int au_new_inode(struct dentry *dentry, int must_new, struct inode **inode)
+{
+	*inode = au_do_new_inode(dentry, must_new);
+	if (IS_ERR(*inode))
+		return PTR_ERR(*inode);
+	return 0;
 }
 
 /* ---------------------------------------------------------------------- */
