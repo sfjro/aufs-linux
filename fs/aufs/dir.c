@@ -369,34 +369,6 @@ static int aufs_flush_dir(struct file *file, fl_owner_t id)
 
 /* ---------------------------------------------------------------------- */
 
-static int au_do_fsync_dir_no_file(struct dentry *dentry, int datasync)
-{
-	int err;
-	aufs_bindex_t bbot, bindex;
-	struct inode *inode;
-	struct super_block *sb;
-
-	err = 0;
-	sb = dentry->d_sb;
-	inode = d_inode(dentry);
-	IMustLock(inode);
-	bbot = au_dbbot(dentry);
-	for (bindex = au_dbtop(dentry); !err && bindex <= bbot; bindex++) {
-		struct path h_path;
-
-		if (au_test_ro(sb, bindex, inode))
-			continue;
-		h_path.dentry = au_h_dptr(dentry, bindex);
-		if (!h_path.dentry)
-			continue;
-
-		h_path.mnt = au_sbr_mnt(sb, bindex);
-		err = vfsub_fsync(NULL, &h_path, datasync);
-	}
-
-	return err;
-}
-
 static int au_do_fsync_dir(struct file *file, int datasync)
 {
 	int err;
@@ -405,10 +377,7 @@ static int au_do_fsync_dir(struct file *file, int datasync)
 	struct super_block *sb;
 	struct inode *inode;
 
-	err = au_reval_and_lock_fdi(file, reopen_dir, /*wlock*/1, /*fi_lsc*/0);
-	if (unlikely(err))
-		goto out;
-
+	err = 0;
 	inode = file_inode(file);
 	sb = inode->i_sb;
 	bbot = au_fbbot_dir(file);
@@ -420,7 +389,6 @@ static int au_do_fsync_dir(struct file *file, int datasync)
 		err = vfsub_fsync(h_file, &h_file->f_path, datasync);
 	}
 
-out:
 	return err;
 }
 
@@ -441,17 +409,16 @@ static int aufs_fsync_dir(struct file *file, loff_t start, loff_t end,
 	inode_lock(inode);
 	sb = dentry->d_sb;
 	si_noflush_read_lock(sb);
-	if (file)
-		err = au_do_fsync_dir(file, datasync);
-	else {
-		di_write_lock_child(dentry);
-		err = au_do_fsync_dir_no_file(dentry, datasync);
-	}
+	/* unlocks finfo and dinfo by itself on error */
+	err = au_reval_and_lock_fdi(file, reopen_dir, /*wlock*/1, /*fi_lsc*/0);
+	if (unlikely(err))
+		goto out;
+	err = au_do_fsync_dir(file, datasync);
 	au_cpup_attr_timesizes(inode);
 	di_write_unlock(dentry);
-	if (file)
-		fi_write_unlock(file);
+	fi_write_unlock(file);
 
+out:
 	si_read_unlock(sb);
 	inode_unlock(inode);
 	return err;
