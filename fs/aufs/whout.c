@@ -474,6 +474,7 @@ int au_wh_init(struct au_branch *br, struct super_block *sb)
 	if (wbr)
 		WbrWhMustWriteLock(wbr);
 
+	need_drop = 0;
 	for (i = 0; i < AuBrWh_Last; i++) {
 		/* doubly whiteouted */
 		struct dentry *d;
@@ -495,7 +496,6 @@ int au_wh_init(struct au_branch *br, struct super_block *sb)
 			wbr->wbr_wh[i] = NULL;
 		}
 
-	need_drop = 0;
 	err = vfsub_mnt_want_write(path.mnt);
 	if (unlikely(err))
 		goto out_err;
