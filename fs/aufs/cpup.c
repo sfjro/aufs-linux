@@ -1365,8 +1365,7 @@ int au_cp_dirs(struct dentry *dentry, aufs_bindex_t bdst,
 			di_read_unlock(parent, !AuLock_IR);
 		} while (!h_parent);
 
-		if (d != real_parent)
-			di_write_lock_child3(d);
+		di_write_lock_unless(d, real_parent, AuLsc_DI_CHILD3);
 
 		/* somebody else might create while we were sleeping */
 		h_dentry = au_h_dptr(d, bdst);
@@ -1382,8 +1381,7 @@ int au_cp_dirs(struct dentry *dentry, aufs_bindex_t bdst,
 			}
 		}
 
-		if (d != real_parent)
-			di_write_unlock(d);
+		di_write_unlock_unless(d, real_parent);
 		if (unlikely(err))
 			break;
 	}

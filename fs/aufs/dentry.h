@@ -159,6 +159,24 @@ AuRWLockFuncs(parent3, PARENT3);
 #undef AuWriteLockFunc
 #undef AuRWLockFuncs
 
+/*
+ * write-lock/unlock the dinfo of @d unless it is @held, whose dinfo the
+ * caller already holds.  Used while walking up the ancestors.
+ */
+static inline void di_write_lock_unless(struct dentry *d, struct dentry *held,
+					unsigned int lsc)
+{
+	if (d != held)
+		di_write_lock(d, lsc);
+}
+
+static inline void di_write_unlock_unless(struct dentry *d,
+					  struct dentry *held)
+{
+	if (d != held)
+		di_write_unlock(d);
+}
+
 #define DiMustNoWaiters(d)	AuRwMustNoWaiters(&au_di(d)->di_rwsem)
 #define DiMustAnyLock(d)	AuRwMustAnyLock(&au_di(d)->di_rwsem)
 #define DiMustWriteLock(d)	AuRwMustWriteLock(&au_di(d)->di_rwsem)
