@@ -1045,8 +1045,7 @@ int au_reval_dpath(struct dentry *dentry, unsigned int sigen)
 			d = parent;
 		}
 
-		if (d != dentry)
-			di_write_lock_child2(d);
+		di_write_lock_unless(d, dentry, AuLsc_DI_CHILD2);
 
 		/* someone might update our dentry while we were sleeping */
 		if (au_digen_test(d, sigen)) {
@@ -1059,8 +1058,7 @@ int au_reval_dpath(struct dentry *dentry, unsigned int sigen)
 			di_read_unlock(parent, AuLock_IR);
 		}
 
-		if (d != dentry)
-			di_write_unlock(d);
+		di_write_unlock_unless(d, dentry);
 		dput(parent);
 		if (unlikely(err))
 			break;
