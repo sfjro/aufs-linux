@@ -184,14 +184,73 @@ aufs_bindex_t au_new_br_id(struct super_block *sb)
 /* ---------------------------------------------------------------------- */
 
 /* it is ok that new 'nwt' tasks are appended while we are sleeping */
-int si_read_lock(struct super_block *sb, int flags)
+static void si_flush(struct super_block *sb, int flags)
+{
+	if (au_ftest_lock(flags, FLUSH))
+		au_nwt_flush(&au_sbi(sb)->si_nowait);
+}
+
+/* wait for the pseudo-link maintainer to leave, si_rwsem not held */
+static void si_plink_maint_wait(struct super_block *sb, int flags)
+{
+	struct au_sbinfo *sbi = au_sbi(sb);
+
+	/* if there is no i_mutex lock in VFS, we don't need to wait */
+	/* AuDebugOn(!lockdep_depth(current)); */
+
+	/* gave up wake_up_bit() */
+	wait_event(sbi->si_plink_wq, !sbi->si_plink_maint_pid);
+	si_flush(sb, flags);
+}
+
+/*
+ * Never fails.  With AuLock_NOPLMW, sleeps (with si_rwsem released) while
+ * another process maintains the pseudo-links.  The si_read_lock() macro
+ * calls do_si_read_lock_noplm() instead for AuLock_NOPLM.
+ */
+void do_si_read_lock(struct super_block *sb, int flags)
+{
+	AuDebugOn(au_ftest_lock(flags, NOPLM));
+
+	si_flush(sb, flags);
+	si_noflush_read_lock(sb);
+	if (!au_ftest_lock(flags, NOPLMW))
+		return;
+	while (au_plink_maint(sb, flags)) {
+		si_read_unlock(sb);
+		si_plink_maint_wait(sb, flags);
+		si_noflush_read_lock(sb);
+	}
+}
+
+void do_si_write_lock(struct super_block *sb, int flags)
+{
+	AuDebugOn(au_ftest_lock(flags, NOPLM));
+
+	si_flush(sb, flags);
+	/* au_debug_on(); AuDbgSleep(5); au_debug_off(); */
+	si_noflush_write_lock(sb);
+	/* pr_info("here\n"); */
+	if (!au_ftest_lock(flags, NOPLMW))
+		return;
+	while (au_plink_maint(sb, flags)) {
+		si_write_unlock(sb);
+		si_plink_maint_wait(sb, flags);
+		si_noflush_write_lock(sb);
+	}
+}
+
+/*
+ * @flags must contain AuLock_NOPLM.  Returns -EAGAIN, with si_rwsem NOT
+ * held, if another process maintains the pseudo-links; 0 with it held.
+ */
+int do_si_read_lock_noplm(struct super_block *sb, int flags)
 {
 	int err;
 
-	err = 0;
-	if (au_ftest_lock(flags, FLUSH))
-		au_nwt_flush(&au_sbi(sb)->si_nowait);
+	AuDebugOn(!au_ftest_lock(flags, NOPLM));
 
+	si_flush(sb, flags);
 	si_noflush_read_lock(sb);
 	err = au_plink_maint(sb, flags);
 	if (unlikely(err))
@@ -200,13 +259,13 @@ int si_read_lock(struct super_block *sb, int flags)
 	return err;
 }
 
-int si_write_lock(struct super_block *sb, int flags)
+int do_si_write_lock_noplm(struct super_block *sb, int flags)
 {
 	int err;
 
-	if (au_ftest_lock(flags, FLUSH))
-		au_nwt_flush(&au_sbi(sb)->si_nowait);
+	AuDebugOn(!au_ftest_lock(flags, NOPLM));
 
+	si_flush(sb, flags);
 	si_noflush_write_lock(sb);
 	err = au_plink_maint(sb, flags);
 	if (unlikely(err))
@@ -215,48 +274,124 @@ int si_write_lock(struct super_block *sb, int flags)
 	return err;
 }
 
-/* dentry and super_block lock. call at entry point */
-int aufs_read_lock(struct dentry *dentry, int flags)
+/*
+ * dentry and super_block lock. call at entry point.
+ *
+ * Called through the aufs_read_{lock,unlock}() macros in super.h, which
+ * select one of these by @flags.  do_aufs_read_lock{,_gen_noplm}()
+ * read-lock the dinfo and the _dw variants write-lock it.  The _gen_noplm
+ * variants are for AuLock_GEN and/or AuLock_NOPLM and may fail, the others
+ * never fail.
+ */
+void do_aufs_read_lock(struct dentry *dentry, int flags)
+{
+	AuDebugOn(au_ftest_lock(flags, GEN) || au_ftest_lock(flags, NOPLM));
+	AuDebugOn(au_ftest_lock(flags, DW));
+
+	do_si_read_lock(dentry->d_sb, flags);
+	di_read_lock_child(dentry, flags);
+}
+
+void do_aufs_read_lock_dw(struct dentry *dentry, int flags)
+{
+	AuDebugOn(au_ftest_lock(flags, GEN) || au_ftest_lock(flags, NOPLM));
+	AuDebugOn(!au_ftest_lock(flags, DW));
+
+	do_si_read_lock(dentry->d_sb, flags);
+	di_write_lock_child(dentry);
+}
+
+/* si_rwsem part of do_aufs_read_lock_gen_noplm{,_dw}() */
+static int aufs_si_read_lock_noplm(struct super_block *sb, int flags)
+{
+	if (au_ftest_lock(flags, NOPLM))
+		return do_si_read_lock_noplm(sb, flags);
+	do_si_read_lock(sb, flags);
+	return 0;
+}
+
+/* AuLock_GEN part of do_aufs_read_lock_gen_noplm{,_dw}(), with locks held */
+static int aufs_read_lock_test_gen(struct dentry *dentry, int flags)
 {
 	int err;
 	struct super_block *sb;
 
-	sb = dentry->d_sb;
-	err = si_read_lock(sb, flags);
-	if (unlikely(err))
-		goto out;
-
-	if (au_ftest_lock(flags, DW))
-		di_write_lock_child(dentry);
-	else
-		di_read_lock_child(dentry, flags);
-
+	err = 0;
 	if (au_ftest_lock(flags, GEN)) {
+		sb = dentry->d_sb;
 		err = au_digen_test(dentry, au_sigen(sb));
 		if (!au_opt_test(au_mntflags(sb), UDBA_NONE))
 			AuDebugOn(!err && au_dbrange_test(dentry));
 		else if (!err)
 			err = au_dbrange_test(dentry);
-		if (unlikely(err))
-			aufs_read_unlock(dentry, flags);
 	}
+
+	return err;
+}
+
+/*
+ * Returns 0 with the locks held, or an error (generation mismatch, -EAGAIN
+ * for AuLock_NOPLM) with nothing held.
+ */
+int do_aufs_read_lock_gen_noplm(struct dentry *dentry, int flags)
+{
+	int err;
+
+	AuDebugOn(!au_ftest_lock(flags, GEN) && !au_ftest_lock(flags, NOPLM));
+	AuDebugOn(au_ftest_lock(flags, DW));
+
+	err = aufs_si_read_lock_noplm(dentry->d_sb, flags);
+	if (unlikely(err))
+		goto out;
+
+	di_read_lock_child(dentry, flags);
+	err = aufs_read_lock_test_gen(dentry, flags);
+	if (unlikely(err))
+		do_aufs_read_unlock(dentry, flags);
 
 out:
 	return err;
 }
 
-void aufs_read_unlock(struct dentry *dentry, int flags)
+int do_aufs_read_lock_gen_noplm_dw(struct dentry *dentry, int flags)
 {
-	if (au_ftest_lock(flags, DW))
-		di_write_unlock(dentry);
-	else
-		di_read_unlock(dentry, flags);
+	int err;
+
+	AuDebugOn(!au_ftest_lock(flags, GEN) && !au_ftest_lock(flags, NOPLM));
+	AuDebugOn(!au_ftest_lock(flags, DW));
+
+	err = aufs_si_read_lock_noplm(dentry->d_sb, flags);
+	if (unlikely(err))
+		goto out;
+
+	di_write_lock_child(dentry);
+	err = aufs_read_lock_test_gen(dentry, flags);
+	if (unlikely(err))
+		do_aufs_read_unlock_dw(dentry, flags);
+
+out:
+	return err;
+}
+
+void do_aufs_read_unlock(struct dentry *dentry, int flags)
+{
+	AuDebugOn(au_ftest_lock(flags, DW));
+
+	di_read_unlock(dentry, flags);
+	si_read_unlock(dentry->d_sb);
+}
+
+void do_aufs_read_unlock_dw(struct dentry *dentry, int flags)
+{
+	AuDebugOn(!au_ftest_lock(flags, DW));
+
+	di_write_unlock(dentry);
 	si_read_unlock(dentry->d_sb);
 }
 
 void aufs_write_lock(struct dentry *dentry)
 {
-	si_write_lock(dentry->d_sb, AuLock_FLUSH | AuLock_NOPLMW);
+	do_si_write_lock(dentry->d_sb, AuLock_FLUSH | AuLock_NOPLMW);
 	di_write_lock_child(dentry);
 }
 
@@ -273,9 +408,14 @@ int aufs_read_and_write_lock2(struct dentry *d1, struct dentry *d2, int flags)
 	struct super_block *sb;
 
 	sb = d1->d_sb;
-	err = si_read_lock(sb, flags);
-	if (unlikely(err))
-		goto out;
+	if (au_ftest_lock(flags, NOPLM)) {
+		err = do_si_read_lock_noplm(sb, flags);
+		if (unlikely(err))
+			goto out;
+	} else {
+		err = 0;
+		do_si_read_lock(sb, flags);
+	}
 
 	di_write_lock2_child(d1, d2, au_ftest_lock(flags, DIRS));
 
