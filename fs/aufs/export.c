@@ -431,13 +431,17 @@ out:
 	return dentry;
 }
 
-/* called with si_rwsem read-locked, which is released during the lookup */
-static struct dentry *au_lkup_by_ino(struct path *path, ino_t ino,
+/*
+ * called with si_rwsem of @sb read-locked, which is released during the
+ * lookup.  @path is a dir in @sb.
+ */
+static struct dentry *au_lkup_by_ino(struct super_block *sb,
+				     struct path *path, ino_t ino,
 				     struct au_nfsd_si_lock *nsi_lock)
 {
 	struct dentry *dentry;
-	struct super_block *sb = path->dentry->d_sb;
 
+	AuDebugOn(path->dentry->d_sb != sb);
 	si_read_unlock(sb);
 	dentry = au_do_lkup_by_ino(path, ino);
 	if (unlikely(si_nfsd_relock(sb, nsi_lock) < 0) && !IS_ERR(dentry)) {
@@ -470,7 +474,7 @@ static struct dentry *decode_by_dir_ino(struct super_block *sb, ino_t ino,
 		dput(path.dentry);
 		goto out;
 	}
-	dentry = au_lkup_by_ino(&path, ino, nsi_lock);
+	dentry = au_lkup_by_ino(sb, &path, ino, nsi_lock);
 	path_put(&path);
 
 out:
