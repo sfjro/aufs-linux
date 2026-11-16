@@ -154,11 +154,15 @@ out:
  */
 static void au_lookup_post(struct dentry *dentry, struct inode *inode,
 			   struct dentry *ret)
+	__releases(&au_ii(inode)->ii_rwsem)
 {
 	if (!IS_ERR(ret)) {
 		iput(inode);
 		if (ret && ret != dentry)
 			ii_write_unlock(inode);
+		else
+			/* now released through the dinfo of @dentry */
+			__release(&au_ii(inode)->ii_rwsem);
 	} else {
 		ii_write_unlock(inode);
 		iput(inode);
@@ -671,15 +675,18 @@ struct dentry *au_pinned_h_parent(struct au_pin *pin)
 
 /*
  * Lock/unlock the parent dinfo unless the caller has locked it
- * (AuPin_DI_LOCKED).
+ * (AuPin_DI_LOCKED).  Whether it is held is kept in @p, so it is not
+ * described for context analysis.
  */
 static void au_pin_di_read_lock(struct au_pin *p)
+	__context_unsafe(/* lock state is kept in @p */)
 {
 	if (!au_ftest_pin(p->flags, DI_LOCKED))
 		di_read_lock(p->parent, AuLock_IR, p->lsc_di);
 }
 
 static void au_pin_di_read_unlock(struct au_pin *p)
+	__context_unsafe(/* lock state is kept in @p */)
 {
 	if (!au_ftest_pin(p->flags, DI_LOCKED))
 		di_read_unlock(p->parent, AuLock_IR);
@@ -837,9 +844,10 @@ int au_reval_for_attr(struct dentry *dentry, unsigned int sigen)
  * The parent dinfo is write-locked by au_icpup_lock_parent() unless the
  * dentry is the root, i.e. it is held iff the returned parent is non-NULL.
  * au_icpup_pass_parent() downgrades it and hands it over to the pin, which
- * then releases it in au_unpin().
+ * then releases it in au_unpin().  Not described for context analysis.
  */
 static struct dentry *au_icpup_lock_parent(struct dentry *dentry)
+	__context_unsafe(/* held iff the result is non-NULL */)
 {
 	struct dentry *parent;
 
@@ -851,6 +859,7 @@ static struct dentry *au_icpup_lock_parent(struct dentry *dentry)
 }
 
 static void au_icpup_unlock_parent(struct dentry *parent)
+	__context_unsafe(/* held iff @parent is non-NULL */)
 {
 	if (parent) {
 		di_write_unlock(parent);
@@ -859,6 +868,7 @@ static void au_icpup_unlock_parent(struct dentry *parent)
 }
 
 static void au_icpup_pass_parent(struct au_pin *pin, struct dentry *parent)
+	__context_unsafe(/* held iff @parent is non-NULL */)
 {
 	if (parent) {
 		au_pin_set_parent_lflag(pin, /*lflag*/0);

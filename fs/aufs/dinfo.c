@@ -16,7 +16,9 @@ void au_di_init_once(void *_dinfo)
 	au_rw_init(&dinfo->di_rwsem);
 }
 
+/* returns the new dinfo write-locked, see au_di_tmp_unlock() */
 struct au_dinfo *au_di_alloc(struct super_block *sb, unsigned int lsc)
+	__context_unsafe(/* the new dinfo is returned locked */)
 {
 	struct au_dinfo *dinfo;
 	int nbr, i;
@@ -106,6 +108,7 @@ void au_di_cp(struct au_dinfo *dst, struct au_dinfo *src)
 }
 
 int au_di_init(struct dentry *dentry)
+	__context_unsafe(/* au_di_alloc() returns the dinfo write-locked */)
 {
 	int err;
 	struct super_block *sb;
@@ -157,6 +160,7 @@ int au_di_realloc(struct au_dinfo *dinfo, int nbr, int may_shrink)
 /* ---------------------------------------------------------------------- */
 
 static void do_ii_write_lock(struct inode *inode, unsigned int lsc)
+	__context_unsafe(/* ii_rwsem: not in the di_*() contract */)
 {
 	switch (lsc) {
 	case AuLsc_DI_CHILD:
@@ -183,6 +187,7 @@ static void do_ii_write_lock(struct inode *inode, unsigned int lsc)
 }
 
 static void do_ii_read_lock(struct inode *inode, unsigned int lsc)
+	__context_unsafe(/* ii_rwsem: not in the di_*() contract */)
 {
 	switch (lsc) {
 	case AuLsc_DI_CHILD:
@@ -228,18 +233,20 @@ void di_read_unlock(struct dentry *d, int flags)
 
 	if (d_really_is_positive(d)) {
 		inode = d_inode(d);
+		/* ii_rwsem is not part of the di_*() contract */
 		if (au_ftest_lock(flags, IW)) {
 			au_dbg_verify_dinode(d);
-			ii_write_unlock(inode);
+			context_unsafe(ii_write_unlock(inode));
 		} else if (au_ftest_lock(flags, IR)) {
 			au_dbg_verify_dinode(d);
-			ii_read_unlock(inode);
+			context_unsafe(ii_read_unlock(inode));
 		}
 	}
 	au_rw_read_unlock(&au_di(d)->di_rwsem);
 }
 
 static void do_ii_downgrade_lock(struct inode *inode)
+	__context_unsafe(/* ii_rwsem: not in the di_*() contract */)
 {
 	ii_downgrade_lock(inode);
 }
@@ -261,8 +268,9 @@ void di_write_lock(struct dentry *d, unsigned int lsc)
 void di_write_unlock(struct dentry *d)
 {
 	au_dbg_verify_dinode(d);
+	/* ii_rwsem is not part of the di_*() contract */
 	if (d_really_is_positive(d))
-		ii_write_unlock(d_inode(d));
+		context_unsafe(ii_write_unlock(d_inode(d)));
 	au_rw_write_unlock(&au_di(d)->di_rwsem);
 }
 

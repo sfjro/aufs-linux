@@ -16,6 +16,7 @@
 #include <linux/fs.h>
 #include <linux/mm_types.h>
 #include <linux/poll.h>
+#include "dentry.h"
 #include "rwsem.h"
 
 struct au_branch;
@@ -75,13 +76,19 @@ int au_do_open(struct file *file, struct au_do_open_args *args);
 int au_reopen_nondir(struct file *file);
 struct au_pin;
 int au_ready_to_write(struct file *file, loff_t len, struct au_pin *pin);
+struct au_finfo;
+static inline struct au_finfo *au_fi(struct file *file);
 /* return 0 with finfo and dinfo locked, or an error with nothing locked */
 int au_reval_and_read_lock_fdi(struct file *file,
 			       int (*reopen)(struct file *file),
-			       unsigned int fi_lsc);
+			       unsigned int fi_lsc)
+	__cond_acquires_shared(0, &au_fi(file)->fi_rwsem)
+	__cond_acquires_shared(0, &au_di(file->f_path.dentry)->di_rwsem);
 int au_reval_and_write_lock_fdi(struct file *file,
 				int (*reopen)(struct file *file),
-				unsigned int fi_lsc);
+				unsigned int fi_lsc)
+	__cond_acquires(0, &au_fi(file)->fi_rwsem)
+	__cond_acquires(0, &au_di(file->f_path.dentry)->di_rwsem);
 
 /*
  * Entry point.  @wlock must be a constant, which selects the function at
@@ -151,7 +158,9 @@ int au_fidir_realloc(struct au_finfo *finfo, int nbr, int may_shrink);
 
 void au_fi_init_once(void *_fi);
 void au_finfo_fin(struct file *file);
-int au_finfo_init(struct file *file, struct au_fidir *fidir);
+/* returns 0 with the new finfo write-locked */
+int au_finfo_init(struct file *file, struct au_fidir *fidir)
+	__cond_acquires(0, &au_fi(file)->fi_rwsem);
 
 /* ioctl.c */
 long aufs_ioctl_nondir(struct file *file, unsigned int cmd, unsigned long arg);
@@ -193,11 +202,13 @@ enum {
 };
 
 static inline void fi_read_lock_nested(struct file *f, unsigned int lsc)
+	__acquires_shared(&au_fi(f)->fi_rwsem)
 {
 	au_rw_read_lock_nested(&au_fi(f)->fi_rwsem, lsc);
 }
 
 static inline void fi_write_lock_nested(struct file *f, unsigned int lsc)
+	__acquires(&au_fi(f)->fi_rwsem)
 {
 	au_rw_write_lock_nested(&au_fi(f)->fi_rwsem, lsc);
 }
@@ -208,10 +219,12 @@ static inline void fi_write_lock_nested(struct file *f, unsigned int lsc)
  */
 #define AuReadLockFunc(name) \
 static inline void fi_read_lock_##name(struct file *f) \
+	__acquires_shared(&au_fi(f)->fi_rwsem) \
 { fi_read_lock_nested(f, AuLsc_FI_##name); }
 
 #define AuWriteLockFunc(name) \
 static inline void fi_write_lock_##name(struct file *f) \
+	__acquires(&au_fi(f)->fi_rwsem) \
 { fi_write_lock_nested(f, AuLsc_FI_##name); }
 
 #define AuRWLockFuncs(name) \

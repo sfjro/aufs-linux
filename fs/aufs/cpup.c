@@ -1412,7 +1412,13 @@ int au_cpup_dirs(struct dentry *dentry, aufs_bindex_t bdst)
 	return au_cp_dirs(dentry, bdst, au_cpup_dir, NULL);
 }
 
+/*
+ * called with the parent dinfo read-locked, which may be upgraded to write
+ * temporarily.  The parent is only known here (dget_parent()), so this is
+ * not described for context analysis.
+ */
 int au_test_and_cpup_dirs(struct dentry *dentry, aufs_bindex_t bdst)
+	__context_unsafe(/* upgrades the caller's parent dinfo lock */)
 {
 	int err;
 	struct dentry *parent;

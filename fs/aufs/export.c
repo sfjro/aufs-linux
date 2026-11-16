@@ -259,7 +259,9 @@ out:
 /* todo: dirty? */
 /* if exportfs_decode_fh() passed vfsmount*, we could be happy */
 
+/* called with si_rwsem read-locked, which it drops temporarily */
 static struct vfsmount *au_mnt_get(struct super_block *sb)
+	__must_hold_shared(&au_sbi(sb)->si_rwsem)
 {
 	struct vfsmount *mnt;
 	struct path root;
@@ -304,6 +306,7 @@ struct au_nfsd_si_lock {
 /* called with si_rwsem read-locked */
 static int si_nfsd_test_br(struct super_block *sb,
 			   struct au_nfsd_si_lock *nsi_lock)
+	__must_hold_shared(&au_sbi(sb)->si_rwsem)
 {
 	int err;
 	aufs_bindex_t bindex;
@@ -325,6 +328,7 @@ out:
 /* returns 0 with si_rwsem read-locked, or -ESTALE with nothing locked */
 static int si_nfsd_read_lock(struct super_block *sb,
 			     struct au_nfsd_si_lock *nsi_lock)
+	__cond_acquires_shared(0, &au_sbi(sb)->si_rwsem)
 {
 	int err;
 
@@ -342,6 +346,7 @@ static int si_nfsd_read_lock(struct super_block *sb,
  */
 static int si_nfsd_relock(struct super_block *sb,
 			  struct au_nfsd_si_lock *nsi_lock)
+	__acquires_shared(&au_sbi(sb)->si_rwsem)
 {
 	si_read_lock(sb, AuLock_FLUSH);
 	return si_nfsd_test_br(sb, nsi_lock);
@@ -438,6 +443,7 @@ out:
 static struct dentry *au_lkup_by_ino(struct super_block *sb,
 				     struct path *path, ino_t ino,
 				     struct au_nfsd_si_lock *nsi_lock)
+	__must_hold_shared(&au_sbi(sb)->si_rwsem)
 {
 	struct dentry *dentry;
 
@@ -452,9 +458,11 @@ static struct dentry *au_lkup_by_ino(struct super_block *sb,
 	return dentry;
 }
 
+/* called with si_rwsem read-locked, which may be released temporarily */
 static struct dentry *decode_by_dir_ino(struct super_block *sb, ino_t ino,
 					ino_t dir_ino,
 					struct au_nfsd_si_lock *nsi_lock)
+	__must_hold_shared(&au_sbi(sb)->si_rwsem)
 {
 	struct dentry *dentry;
 	struct path path;
@@ -491,6 +499,7 @@ static int h_acceptable(void *expv, struct dentry *dentry)
 
 static char *au_build_path(struct dentry *h_parent, struct path *h_rootpath,
 			   char *buf, int len, struct super_block *sb)
+	__must_hold_shared(&au_sbi(sb)->si_rwsem)
 {
 	char *p;
 	int n;
@@ -527,9 +536,11 @@ out:
 	return p;
 }
 
+/* called with si_rwsem read-locked, which may be released temporarily */
 static
 struct dentry *decode_by_path(struct super_block *sb, ino_t ino, __u32 *fh,
 			      int fh_len, struct au_nfsd_si_lock *nsi_lock)
+	__must_hold_shared(&au_sbi(sb)->si_rwsem)
 {
 	struct dentry *dentry, *h_parent, *root;
 	struct super_block *h_sb;

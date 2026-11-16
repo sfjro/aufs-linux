@@ -202,14 +202,17 @@ int au_br_index(struct super_block *sb, aufs_bindex_t br_id);
 struct au_opt_add;
 int au_br_add(struct super_block *sb, struct au_opt_add *add, int remount);
 struct au_opt_del;
-int au_br_del(struct super_block *sb, struct au_opt_del *del, int remount);
+/* called with the root dinfo write-locked, which they may drop temporarily */
+int au_br_del(struct super_block *sb, struct au_opt_del *del, int remount)
+	__must_hold(&au_di(sb->s_root)->di_rwsem);
 long au_ibusy_ioctl(struct file *file, unsigned long arg);
 #ifdef CONFIG_COMPAT
 long au_ibusy_compat_ioctl(struct file *file, unsigned long arg);
 #endif
 struct au_opt_mod;
 int au_br_mod(struct super_block *sb, struct au_opt_mod *mod, int remount,
-	      int *do_refresh);
+	      int *do_refresh)
+	__must_hold(&au_di(sb->s_root)->di_rwsem);
 struct aufs_stfs;
 int au_br_stfs(struct au_branch *br, struct aufs_stfs *stfs);
 

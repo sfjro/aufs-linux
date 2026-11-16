@@ -275,7 +275,9 @@ out:
  * zero: success, matched
  * plus: no error, but unmatched
  */
+/* returns 0 with the iinfo write-locked */
 static int reval_inode(struct inode *inode, struct dentry *dentry)
+	__cond_acquires(0, &au_ii(inode)->ii_rwsem)
 {
 	int err;
 	unsigned int gen, igflags;
@@ -359,6 +361,7 @@ out:
 /* todo: return with unlocked? */
 /* returns the inode iinfo write-locked, or an error */
 static struct inode *au_do_new_inode(struct dentry *dentry, int must_new)
+	__context_unsafe(/* the lock is on the returned inode */)
 {
 	struct inode *inode, *h_inode;
 	struct dentry *h_dentry;
@@ -476,6 +479,7 @@ out:
 }
 
 int au_new_inode(struct dentry *dentry, int must_new, struct inode **inode)
+	__context_unsafe(/* the lock is on *inode */)
 {
 	*inode = au_do_new_inode(dentry, must_new);
 	if (IS_ERR(*inode))

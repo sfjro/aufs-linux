@@ -14,6 +14,7 @@
 
 #include <linux/fs.h>
 #include <linux/kobject.h>
+#include "dentry.h"
 #include "lcnt.h"
 #include "rwsem.h"
 #include "wkq.h"
@@ -256,9 +257,13 @@ void *au_array_alloc(unsigned long long *hint, au_arraycb_t cb,
 struct inode **au_iarray_alloc(struct super_block *sb, unsigned long long *max);
 void au_iarray_free(struct inode **a, unsigned long long max);
 
-void au_remount_refresh(struct super_block *sb, unsigned int do_idop);
+/* called with the root dinfo write-locked, which it drops temporarily */
+void au_remount_refresh(struct super_block *sb, unsigned int do_idop)
+	__must_hold(&au_di(sb->s_root)->di_rwsem);
 extern const struct super_operations aufs_sop;
-int au_alloc_root(struct super_block *sb);
+/* returns 0 with the dinfo of the new sb->s_root write-locked */
+int au_alloc_root(struct super_block *sb)
+	__cond_acquires(0, &au_di(sb->s_root)->di_rwsem);
 extern struct file_system_type aufs_fs_type;
 
 /* sbinfo.c */
@@ -269,10 +274,15 @@ int au_sbr_realloc(struct au_sbinfo *sbinfo, int nbr, int may_shrink);
 unsigned int au_sigen_inc(struct super_block *sb);
 aufs_bindex_t au_new_br_id(struct super_block *sb);
 
-void do_si_read_lock(struct super_block *sb, int flags);
-void do_si_write_lock(struct super_block *sb, int flags);
-int do_si_read_lock_noplm(struct super_block *sb, int flags);
-int do_si_write_lock_noplm(struct super_block *sb, int flags);
+static inline struct au_sbinfo *au_sbi(struct super_block *sb);
+void do_si_read_lock(struct super_block *sb, int flags)
+	__acquires_shared(&au_sbi(sb)->si_rwsem);
+void do_si_write_lock(struct super_block *sb, int flags)
+	__acquires(&au_sbi(sb)->si_rwsem);
+int do_si_read_lock_noplm(struct super_block *sb, int flags)
+	__cond_acquires_shared(0, &au_sbi(sb)->si_rwsem);
+int do_si_write_lock_noplm(struct super_block *sb, int flags)
+	__cond_acquires(0, &au_sbi(sb)->si_rwsem);
 
 /*
  * Entry points of si_rwsem.  @flags must be a constant, which selects the
@@ -306,16 +316,39 @@ int do_si_write_lock_noplm(struct super_block *sb, int flags);
 	_err;								\
 })
 
-void do_aufs_read_lock(struct dentry *dentry, int flags);
-void do_aufs_read_lock_dw(struct dentry *dentry, int flags);
-int do_aufs_read_lock_gen_noplm(struct dentry *dentry, int flags);
-int do_aufs_read_lock_gen_noplm_dw(struct dentry *dentry, int flags);
-void do_aufs_read_unlock(struct dentry *dentry, int flags);
-void do_aufs_read_unlock_dw(struct dentry *dentry, int flags);
-void aufs_write_lock(struct dentry *dentry);
-void aufs_write_unlock(struct dentry *dentry);
-int aufs_read_and_write_lock2(struct dentry *d1, struct dentry *d2, int flags);
-void aufs_read_and_write_unlock2(struct dentry *d1, struct dentry *d2);
+/*
+ * Context analysis: si_rwsem and di_rwsem are described.  The iinfo lock
+ * taken with AuLock_IR is not, see dentry.h.
+ */
+void do_aufs_read_lock(struct dentry *dentry, int flags)
+	__acquires_shared(&au_sbi(dentry->d_sb)->si_rwsem)
+	__acquires_shared(&au_di(dentry)->di_rwsem);
+void do_aufs_read_lock_dw(struct dentry *dentry, int flags)
+	__acquires_shared(&au_sbi(dentry->d_sb)->si_rwsem)
+	__acquires(&au_di(dentry)->di_rwsem);
+int do_aufs_read_lock_gen_noplm(struct dentry *dentry, int flags)
+	__cond_acquires_shared(0, &au_sbi(dentry->d_sb)->si_rwsem)
+	__cond_acquires_shared(0, &au_di(dentry)->di_rwsem);
+int do_aufs_read_lock_gen_noplm_dw(struct dentry *dentry, int flags)
+	__cond_acquires_shared(0, &au_sbi(dentry->d_sb)->si_rwsem)
+	__cond_acquires(0, &au_di(dentry)->di_rwsem);
+void do_aufs_read_unlock(struct dentry *dentry, int flags)
+	__releases_shared(&au_sbi(dentry->d_sb)->si_rwsem)
+	__releases_shared(&au_di(dentry)->di_rwsem);
+void do_aufs_read_unlock_dw(struct dentry *dentry, int flags)
+	__releases_shared(&au_sbi(dentry->d_sb)->si_rwsem)
+	__releases(&au_di(dentry)->di_rwsem);
+void aufs_write_lock(struct dentry *dentry)
+	__acquires(&au_sbi(dentry->d_sb)->si_rwsem, &au_di(dentry)->di_rwsem);
+void aufs_write_unlock(struct dentry *dentry)
+	__releases(&au_sbi(dentry->d_sb)->si_rwsem, &au_di(dentry)->di_rwsem);
+int aufs_read_and_write_lock2(struct dentry *d1, struct dentry *d2, int flags)
+	__cond_acquires_shared(0, &au_sbi(d1->d_sb)->si_rwsem)
+	__cond_acquires(0, &au_di(d1)->di_rwsem)
+	__cond_acquires(0, &au_di(d2)->di_rwsem);
+void aufs_read_and_write_unlock2(struct dentry *d1, struct dentry *d2)
+	__releases_shared(&au_sbi(d1->d_sb)->si_rwsem)
+	__releases(&au_di(d1)->di_rwsem, &au_di(d2)->di_rwsem);
 
 /*
  * Entry points of aufs_read_{lock,unlock}().  @flags must be a constant,
@@ -452,21 +485,25 @@ static inline void au_sbilist_fin(void)
 
 #ifdef CONFIG_AUFS_MAGIC_SYSRQ
 static inline void au_sbilist_write_lock(void)
+	__acquires(&au_sbilist_lock)
 {
 	au_rw_write_lock(&au_sbilist_lock);
 }
 
 static inline void au_sbilist_write_unlock(void)
+	__releases(&au_sbilist_lock)
 {
 	au_rw_write_unlock(&au_sbilist_lock);
 }
 
 static inline void au_sbilist_read_lock(void)
+	__acquires_shared(&au_sbilist_lock)
 {
 	au_rw_read_lock(&au_sbilist_lock);
 }
 
 static inline void au_sbilist_read_unlock(void)
+	__releases_shared(&au_sbilist_lock)
 {
 	au_rw_read_unlock(&au_sbilist_lock);
 }
@@ -575,12 +612,14 @@ static inline void si_pid_set(struct super_block *sb)
 #define SiMustWriteLock(sb)	AuRwMustWriteLock(&au_sbi(sb)->si_rwsem)
 
 static inline void si_noflush_read_lock(struct super_block *sb)
+	__acquires_shared(&au_sbi(sb)->si_rwsem)
 {
 	__si_read_lock(sb);
 	si_pid_set(sb);
 }
 
 static inline int si_noflush_read_trylock(struct super_block *sb)
+	__cond_acquires_shared(true, &au_sbi(sb)->si_rwsem)
 {
 	int locked;
 
@@ -591,12 +630,14 @@ static inline int si_noflush_read_trylock(struct super_block *sb)
 }
 
 static inline void si_noflush_write_lock(struct super_block *sb)
+	__acquires(&au_sbi(sb)->si_rwsem)
 {
 	__si_write_lock(sb);
 	si_pid_set(sb);
 }
 
 static inline int si_noflush_write_trylock(struct super_block *sb)
+	__cond_acquires(true, &au_sbi(sb)->si_rwsem)
 {
 	int locked;
 
@@ -616,6 +657,7 @@ static inline int si_read_trylock(struct super_block *sb, int flags)
 #endif
 
 static inline void si_read_unlock(struct super_block *sb)
+	__releases_shared(&au_sbi(sb)->si_rwsem)
 {
 	si_pid_clr(sb);
 	__si_read_unlock(sb);
@@ -631,6 +673,7 @@ static inline int si_write_trylock(struct super_block *sb, int flags)
 #endif
 
 static inline void si_write_unlock(struct super_block *sb)
+	__releases(&au_sbi(sb)->si_rwsem)
 {
 	si_pid_clr(sb);
 	__si_write_unlock(sb);

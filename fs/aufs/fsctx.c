@@ -126,6 +126,8 @@ static int au_fsctx_fill_super(struct super_block *sb, struct fs_context *fc)
 	inode = d_inode(root);
 	ii_write_lock_parent(inode);
 	di_write_unlock(root);
+	/* the root iinfo was released by di_write_unlock() above */
+	__release(&au_ii(inode)->ii_rwsem);
 	si_write_unlock(sb);
 
 	/* lock vfs_inode first, then aufs. */
@@ -1218,7 +1220,8 @@ int aufs_fsctx_init(struct fs_context *fc)
 		err = PTR_ERR(a->sbinfo);
 		if (IS_ERR(a->sbinfo))
 			goto out_opt;
-		au_rw_write_unlock(&a->sbinfo->si_rwsem);
+		/* locked by au_si_alloc(), not published yet */
+		context_unsafe(au_rw_write_unlock(&a->sbinfo->si_rwsem));
 	}
 
 	err = 0;

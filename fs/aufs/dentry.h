@@ -75,23 +75,39 @@ int au_reval_dpath(struct dentry *dentry, unsigned int sigen);
 void au_refresh_dop(struct dentry *dentry, int force_reval);
 
 /* dinfo.c */
+static inline struct au_dinfo *au_di(struct dentry *dentry);
 void au_di_init_once(void *_di);
 struct au_dinfo *au_di_alloc(struct super_block *sb, unsigned int lsc);
 void au_di_free(struct au_dinfo *dinfo);
 void au_di_swap(struct au_dinfo *a, struct au_dinfo *b);
 void au_di_cp(struct au_dinfo *dst, struct au_dinfo *src);
-int au_di_init(struct dentry *dentry);
+/* returns 0 with the new dinfo write-locked */
+int au_di_init(struct dentry *dentry)
+	__cond_acquires(0, &au_di(dentry)->di_rwsem);
 void au_di_fin(struct dentry *dentry);
 int au_di_realloc(struct au_dinfo *dinfo, int nbr, int may_shrink);
 
-void di_read_lock(struct dentry *d, int flags, unsigned int lsc);
-void di_read_unlock(struct dentry *d, int flags);
-void di_downgrade_lock(struct dentry *d, int flags);
-void di_write_lock(struct dentry *d, unsigned int lsc);
-void di_write_unlock(struct dentry *d);
-void di_write_lock2_child(struct dentry *d1, struct dentry *d2, int isdir);
-void di_write_lock2_parent(struct dentry *d1, struct dentry *d2, int isdir);
-void di_write_unlock2(struct dentry *d1, struct dentry *d2);
+/*
+ * Context analysis: only di_rwsem is described.  The iinfo lock is taken
+ * only for a positive dentry (and, for di_read_lock(), only with
+ * AuLock_IR), which cannot be expressed as a static contract.
+ */
+void di_read_lock(struct dentry *d, int flags, unsigned int lsc)
+	__acquires_shared(&au_di(d)->di_rwsem);
+void di_read_unlock(struct dentry *d, int flags)
+	__releases_shared(&au_di(d)->di_rwsem);
+void di_downgrade_lock(struct dentry *d, int flags)
+	__releases(&au_di(d)->di_rwsem) __acquires_shared(&au_di(d)->di_rwsem);
+void di_write_lock(struct dentry *d, unsigned int lsc)
+	__acquires(&au_di(d)->di_rwsem);
+void di_write_unlock(struct dentry *d)
+	__releases(&au_di(d)->di_rwsem);
+void di_write_lock2_child(struct dentry *d1, struct dentry *d2, int isdir)
+	__acquires(&au_di(d1)->di_rwsem, &au_di(d2)->di_rwsem);
+void di_write_lock2_parent(struct dentry *d1, struct dentry *d2, int isdir)
+	__acquires(&au_di(d1)->di_rwsem, &au_di(d2)->di_rwsem);
+void di_write_unlock2(struct dentry *d1, struct dentry *d2)
+	__releases(&au_di(d1)->di_rwsem, &au_di(d2)->di_rwsem);
 
 struct dentry *au_h_dptr(struct dentry *dentry, aufs_bindex_t bindex);
 struct dentry *au_h_d_alias(struct dentry *dentry, aufs_bindex_t bindex);
@@ -138,10 +154,12 @@ enum {
  */
 #define AuReadLockFunc(name, lsc) \
 static inline void di_read_lock_##name(struct dentry *d, int flags) \
+	__acquires_shared(&au_di(d)->di_rwsem) \
 { di_read_lock(d, flags, AuLsc_DI_##lsc); }
 
 #define AuWriteLockFunc(name, lsc) \
 static inline void di_write_lock_##name(struct dentry *d) \
+	__acquires(&au_di(d)->di_rwsem) \
 { di_write_lock(d, AuLsc_DI_##lsc); }
 
 #define AuRWLockFuncs(name, lsc) \
@@ -161,10 +179,13 @@ AuRWLockFuncs(parent3, PARENT3);
 
 /*
  * write-lock/unlock the dinfo of @d unless it is @held, whose dinfo the
- * caller already holds.  Used while walking up the ancestors.
+ * caller already holds.  Used while walking up the ancestors; which one
+ * is locked depends on the dentry identity, so not described for context
+ * analysis.
  */
 static inline void di_write_lock_unless(struct dentry *d, struct dentry *held,
 					unsigned int lsc)
+	__context_unsafe(/* depends on d != held */)
 {
 	if (d != held)
 		di_write_lock(d, lsc);
@@ -172,6 +193,7 @@ static inline void di_write_lock_unless(struct dentry *d, struct dentry *held,
 
 static inline void di_write_unlock_unless(struct dentry *d,
 					  struct dentry *held)
+	__context_unsafe(/* depends on d != held */)
 {
 	if (d != held)
 		di_write_unlock(d);
@@ -179,6 +201,7 @@ static inline void di_write_unlock_unless(struct dentry *d,
 
 /* release a dinfo from au_di_alloc() which was never published */
 static inline void au_di_tmp_unlock(struct au_dinfo *dinfo)
+	__context_unsafe(/* locked by au_di_alloc() */)
 {
 	au_rw_write_unlock(&dinfo->di_rwsem);
 }
