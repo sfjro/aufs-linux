@@ -52,7 +52,8 @@ static int au_fsctx_reconfigure(struct fs_context *fc)
 	if (!err) {
 		di_write_lock_child(root);
 		err = au_opts_verify(sb, fc->sb_flags, /*pending*/0);
-		aufs_write_unlock(root);
+		di_write_unlock(root);
+		si_write_unlock(sb);
 	}
 
 	inode = d_inode(root);
@@ -76,7 +77,8 @@ static int au_fsctx_reconfigure(struct fs_context *fc)
 	}
 
 	au_fhsm_wrote_all(sb, /*force*/1); /* ?? */
-	aufs_write_unlock(root);
+	di_write_unlock(root);
+	si_write_unlock(sb);
 
 out:
 	inode_unlock(inode);
@@ -123,7 +125,8 @@ static int au_fsctx_fill_super(struct super_block *sb, struct fs_context *fc)
 	root = sb->s_root;
 	inode = d_inode(root);
 	ii_write_lock_parent(inode);
-	aufs_write_unlock(root);
+	di_write_unlock(root);
+	si_write_unlock(sb);
 
 	/* lock vfs_inode first, then aufs. */
 	inode_lock(inode);
