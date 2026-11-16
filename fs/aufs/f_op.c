@@ -530,7 +530,7 @@ static ssize_t aufs_copy_file_range(struct file *src, loff_t src_pos,
 
 		err = au_read_pre_keep_fi(src, AuLsc_FI_2, &a_src.h_file);
 		if (unlikely(err)) {
-			au_write_post(a_dst.inode, a_dst.h_file, &wpre,
+			au_write_post(file_inode(dst), a_dst.h_file, &wpre,
 				      /*written*/0);
 			goto out_si;
 		}
@@ -549,7 +549,7 @@ static ssize_t aufs_copy_file_range(struct file *src, loff_t src_pos,
 				    dst_pos, len, flags);
 
 out_file:
-	au_write_post(a_dst.inode, a_dst.h_file, &wpre, err);
+	au_write_post(file_inode(dst), a_dst.h_file, &wpre, err);
 	fi_read_unlock(src);
 	au_read_post(a_src.inode, a_src.h_file);
 out_si:
