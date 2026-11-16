@@ -239,10 +239,15 @@ void di_read_unlock(struct dentry *d, int flags)
 	au_rw_read_unlock(&au_di(d)->di_rwsem);
 }
 
+static void do_ii_downgrade_lock(struct inode *inode)
+{
+	ii_downgrade_lock(inode);
+}
+
 void di_downgrade_lock(struct dentry *d, int flags)
 {
 	if (d_really_is_positive(d) && au_ftest_lock(flags, IR))
-		ii_downgrade_lock(d_inode(d));
+		do_ii_downgrade_lock(d_inode(d));
 	au_rw_dgrade_lock(&au_di(d)->di_rwsem);
 }
 
