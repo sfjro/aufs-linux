@@ -12,6 +12,11 @@ ccflags-y += -DDEBUG
 # sparse requires the full pathname
 ccflags-y += -include ${srctree}/include/uapi/linux/aufs_type.h
 
+# Compiler-based context analysis (lock checking) by clang >= 23.
+# Effective only with CONFIG_WARN_CONTEXT_ANALYSIS, ignored otherwise.
+# cf. Documentation/dev-tools/context-analysis.rst
+CONTEXT_ANALYSIS := y
+
 obj-$(CONFIG_AUFS_FS) += aufs.o
 aufs-y := module.o sbinfo.o super.o branch.o xino.o sysaufs.o opts.o fsctx.o \
 	wkq.o vfsub.o dcsub.o \
