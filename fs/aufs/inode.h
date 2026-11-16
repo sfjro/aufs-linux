@@ -116,22 +116,21 @@ static inline struct au_iinfo *au_ii(struct inode *inode)
 	return &(container_of(inode, struct au_icntnr, vfs_inode)->iinfo);
 }
 
+static inline spinlock_t *au_nlink_spin(struct inode *inode)
+{
+	return &(container_of(inode, struct au_icntnr, vfs_inode)->nlink_spin);
+}
+
 static inline void au_nlink_lock(struct inode *inode)
 {
-	spinlock_t *spin;
-
 	AuDebugOn(!au_test_aufs(inode->i_sb));
 	AuDebugOn(is_bad_inode(inode));
-	spin = &(container_of(inode, struct au_icntnr, vfs_inode)->nlink_spin);
-	spin_lock(spin);
+	spin_lock(au_nlink_spin(inode));
 }
 
 static inline void au_nlink_unlock(struct inode *inode)
 {
-	spinlock_t *spin;
-
-	spin = &(container_of(inode, struct au_icntnr, vfs_inode)->nlink_spin);
-	spin_unlock(spin);
+	spin_unlock(au_nlink_spin(inode));
 }
 
 /* ---------------------------------------------------------------------- */
