@@ -454,7 +454,7 @@ static int au_mvd_args_intermediate(const unsigned char dmsg,
 		a->bfound = au_dbtop(a->dentry);
 
 	au_di_swap(tmp, dinfo);
-	au_rw_write_unlock(&tmp->di_rwsem);
+	au_di_tmp_unlock(tmp);
 	au_di_free(tmp);
 	if (unlikely(err < 0))
 		AU_MVD_PR(dmsg, "failed look-up lower\n");

@@ -177,6 +177,12 @@ static inline void di_write_unlock_unless(struct dentry *d,
 		di_write_unlock(d);
 }
 
+/* release a dinfo from au_di_alloc() which was never published */
+static inline void au_di_tmp_unlock(struct au_dinfo *dinfo)
+{
+	au_rw_write_unlock(&dinfo->di_rwsem);
+}
+
 #define DiMustNoWaiters(d)	AuRwMustNoWaiters(&au_di(d)->di_rwsem)
 #define DiMustAnyLock(d)	AuRwMustAnyLock(&au_di(d)->di_rwsem)
 #define DiMustWriteLock(d)	AuRwMustWriteLock(&au_di(d)->di_rwsem)
