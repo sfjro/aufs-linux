@@ -44,6 +44,8 @@ static int epilog(struct inode *dir, aufs_bindex_t bindex,
 	err = au_new_inode(dentry, /*must_new*/1, &inode);
 	if (!err) {
 		d_instantiate(dentry, inode);
+		/* now released through the dinfo of @dentry */
+		__release(&au_ii(inode)->ii_rwsem);
 		dir = d_inode(dentry->d_parent); /* dir inode is locked */
 		IMustLock(dir);
 		au_dir_ts(dir, bindex);
@@ -509,6 +511,8 @@ int aufs_tmpfile(const struct mnt_idmap *idmap, struct inode *dir,
 	vfsub_inode_nlink_init(inode, 1);
 	au_ii(inode)->ii_tmpfile = 1;
 	d_tmpfile(file, inode);
+	/* now released through the dinfo of @dentry */
+	__release(&au_ii(inode)->ii_rwsem);
 	au_di(dentry)->di_tmpfile = 1;
 	get_file(h_file);
 	au_di(dentry)->di_htmpfile = h_file;

@@ -933,7 +933,8 @@ static void au_ren_rev_dt(int err, struct au_ren_args *a)
 
 /*
  * The dst parent dinfo is write-locked through the rename, and the src
- * parent too when they differ (ISSAMEDIR is cleared).
+ * parent too when they differ (ISSAMEDIR is cleared).  Only the former
+ * is described for context analysis; the latter is kept in the flag.
  */
 
 /*
@@ -941,6 +942,8 @@ static void au_ren_rev_dt(int err, struct au_ren_args *a)
  * write-locked.
  */
 static int au_ren_need_wh_diffdir(struct au_ren_args *a)
+	__must_hold(&au_di(a->dst_parent)->di_rwsem)
+	__context_unsafe(/* the src parent lock is kept in ISSAMEDIR */)
 {
 	int err;
 
@@ -965,6 +968,8 @@ static int au_ren_need_wh_diffdir(struct au_ren_args *a)
 }
 
 static void au_ren_unlock_parents(struct au_ren_args *a)
+	__releases(&au_di(a->dst_parent)->di_rwsem)
+	__context_unsafe(/* the src parent lock is kept in ISSAMEDIR */)
 {
 	if (au_ftest_ren(a->auren_flags, ISSAMEDIR))
 		di_write_unlock(a->dst_parent);

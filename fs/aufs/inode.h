@@ -116,22 +116,23 @@ static inline struct au_iinfo *au_ii(struct inode *inode)
 	return &(container_of(inode, struct au_icntnr, vfs_inode)->iinfo);
 }
 
-static inline void au_nlink_lock(struct inode *inode)
+static inline spinlock_t *au_nlink_spin(struct inode *inode)
 {
-	spinlock_t *spin;
+	return &(container_of(inode, struct au_icntnr, vfs_inode)->nlink_spin);
+}
 
+static inline void au_nlink_lock(struct inode *inode)
+	__acquires(au_nlink_spin(inode))
+{
 	AuDebugOn(!au_test_aufs(inode->i_sb));
 	AuDebugOn(is_bad_inode(inode));
-	spin = &(container_of(inode, struct au_icntnr, vfs_inode)->nlink_spin);
-	spin_lock(spin);
+	spin_lock(au_nlink_spin(inode));
 }
 
 static inline void au_nlink_unlock(struct inode *inode)
+	__releases(au_nlink_spin(inode))
 {
-	spinlock_t *spin;
-
-	spin = &(container_of(inode, struct au_icntnr, vfs_inode)->nlink_spin);
-	spin_unlock(spin);
+	spin_unlock(au_nlink_spin(inode));
 }
 
 /* ---------------------------------------------------------------------- */
@@ -144,7 +145,8 @@ int au_refresh_hinode(struct inode *inode, struct dentry *dentry);
 int au_ino(struct super_block *sb, aufs_bindex_t bindex, ino_t h_ino,
 	   unsigned int d_type, ino_t *ino);
 /* returns 0 with the iinfo of the new *inode write-locked */
-int au_new_inode(struct dentry *dentry, int must_new, struct inode **inode);
+int au_new_inode(struct dentry *dentry, int must_new, struct inode **inode)
+	__cond_acquires(0, &au_ii(*inode)->ii_rwsem);
 int au_test_ro(struct super_block *sb, aufs_bindex_t bindex,
 	       struct inode *inode);
 int au_test_h_perm(const struct mnt_idmap *h_idmap, struct inode *h_inode,
@@ -221,7 +223,8 @@ int au_pin_and_icpup(struct dentry *dentry, struct iattr *ia,
 
 /* returns 0 with the dinfo read-locked, or an error with nothing locked */
 int au_h_path_getattr(struct dentry *dentry, struct inode *inode, int force,
-		      struct path *h_path);
+		      struct path *h_path)
+	__cond_acquires_shared(0, &au_di(dentry)->di_rwsem);
 /* the caller already holds the dinfo lock */
 int au_h_path_getattr_locked(struct dentry *dentry, struct inode *inode,
 			     int force, struct path *h_path);
@@ -394,12 +397,14 @@ enum {
  */
 #define AuReadLockFunc(name, lsc) \
 static inline void ii_read_lock_##name(struct inode *i) \
+	__acquires_shared(&au_ii(i)->ii_rwsem) \
 { \
 	au_rw_read_lock_nested(&au_ii(i)->ii_rwsem, AuLsc_II_##lsc); \
 }
 
 #define AuWriteLockFunc(name, lsc) \
 static inline void ii_write_lock_##name(struct inode *i) \
+	__acquires(&au_ii(i)->ii_rwsem) \
 { \
 	au_rw_write_lock_nested(&au_ii(i)->ii_rwsem, AuLsc_II_##lsc); \
 }

@@ -108,6 +108,7 @@ void au_fi_init_once(void *_finfo)
 }
 
 int au_finfo_init(struct file *file, struct au_fidir *fidir)
+	__context_unsafe(/* locked before published as file->private_data */)
 {
 	int err;
 	struct au_finfo *finfo;

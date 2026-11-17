@@ -763,6 +763,7 @@ const struct super_operations aufs_sop = {
 /* ---------------------------------------------------------------------- */
 
 int au_alloc_root(struct super_block *sb)
+	__context_unsafe(/* locked by au_di_init(), published as sb->s_root */)
 {
 	int err;
 	struct inode *inode;
@@ -830,7 +831,9 @@ static void aufs_kill_sb(struct super_block *sb)
 
 	root = sb->s_root;
 	if (root) {
-		aufs_write_lock(root);
+		/* aufs_write_lock(root), spelled out for context analysis */
+		si_write_lock(sb, AuLock_FLUSH | AuLock_NOPLMW);
+		di_write_lock_child(root);
 		au_kill_sb_fin(sb);
 		if (au_opt_test(sbinfo->si_mntflags, UDBA_HNOTIFY)) {
 			au_opt_set_udba(sbinfo->si_mntflags, UDBA_NONE);
@@ -838,7 +841,8 @@ static void aufs_kill_sb(struct super_block *sb)
 		}
 		au_kill_sb_pclr(sb);
 		au_dr_opt_flush(sb);
-		aufs_write_unlock(root);
+		di_write_unlock(root);
+		si_write_unlock(sb);
 	} else {
 		/* the mount failed */
 		__si_write_lock(sb);

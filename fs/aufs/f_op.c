@@ -149,6 +149,7 @@ static int aufs_flush_nondir(struct file *file, fl_owner_t id)
  */
 static int au_read_pre_keep_fi(struct file *file, unsigned int lsc,
 			       struct file **h_file)
+	__cond_acquires_shared(0, &au_fi(file)->fi_rwsem)
 {
 	int err;
 
@@ -204,6 +205,8 @@ struct au_write_pre {
  */
 static int au_write_pre(struct file *file, int do_ready,
 			struct au_write_pre *wpre, struct file **h_file)
+	__cond_acquires(0, &au_ii(file_inode(file))->ii_rwsem)
+	__context_unsafe(/* iinfo is locked by di_write_lock() inside */)
 {
 	struct dentry *dentry;
 	int err;
@@ -247,6 +250,7 @@ out:
 
 static void au_write_post(struct inode *inode, struct file *h_file,
 			  struct au_write_pre *wpre, ssize_t written)
+	__releases(&au_ii(inode)->ii_rwsem)
 {
 	struct inode *h_inode;
 
@@ -270,6 +274,7 @@ static void au_write_post(struct inode *inode, struct file *h_file,
  * may loop forever.
  */
 static void au_mtx_and_read_lock(struct inode *inode)
+	__acquires_shared(&au_sbi(inode->i_sb)->si_rwsem)
 {
 	int err;
 	struct super_block *sb = inode->i_sb;
@@ -530,7 +535,7 @@ static ssize_t aufs_copy_file_range(struct file *src, loff_t src_pos,
 
 		err = au_read_pre_keep_fi(src, AuLsc_FI_2, &a_src.h_file);
 		if (unlikely(err)) {
-			au_write_post(a_dst.inode, a_dst.h_file, &wpre,
+			au_write_post(file_inode(dst), a_dst.h_file, &wpre,
 				      /*written*/0);
 			goto out_si;
 		}
@@ -549,7 +554,7 @@ static ssize_t aufs_copy_file_range(struct file *src, loff_t src_pos,
 				    dst_pos, len, flags);
 
 out_file:
-	au_write_post(a_dst.inode, a_dst.h_file, &wpre, err);
+	au_write_post(file_inode(dst), a_dst.h_file, &wpre, err);
 	fi_read_unlock(src);
 	au_read_post(a_src.inode, a_src.h_file);
 out_si:
