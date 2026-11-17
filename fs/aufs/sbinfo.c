@@ -42,7 +42,9 @@ void au_si_free(struct kobject *kobj)
 	au_kfree_rcu(sbinfo);
 }
 
+/* returns the new sbinfo write-locked */
 struct au_sbinfo *au_si_alloc(struct super_block *sb)
+	__context_unsafe(/* the new sbinfo is returned locked */)
 {
 	struct au_sbinfo *sbinfo;
 	int err, i;
@@ -303,6 +305,7 @@ void do_aufs_read_lock_dw(struct dentry *dentry, int flags)
 
 /* si_rwsem part of do_aufs_read_lock_gen_noplm{,_dw}() */
 static int aufs_si_read_lock_noplm(struct super_block *sb, int flags)
+	__cond_acquires_shared(0, &au_sbi(sb)->si_rwsem)
 {
 	if (au_ftest_lock(flags, NOPLM))
 		return do_si_read_lock_noplm(sb, flags);

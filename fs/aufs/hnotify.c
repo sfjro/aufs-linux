@@ -347,6 +347,7 @@ static int hn_job(struct hn_job_args *a)
 
 static struct dentry *lookup_wlock_by_name(char *name, unsigned int nlen,
 					   struct inode *dir)
+	__context_unsafe(/* returns the dentry dinfo-locked, or NULL */)
 {
 	struct dentry *dentry, *d, *parent;
 	const struct qstr *dname;
@@ -387,6 +388,7 @@ cont_unlock:
 
 static struct inode *lookup_wlock_by_ino(struct super_block *sb,
 					 aufs_bindex_t bindex, ino_t h_ino)
+	__context_unsafe(/* returns the inode iinfo-locked, or NULL */)
 {
 	struct inode *inode;
 	ino_t ino;
@@ -495,13 +497,14 @@ static void au_hn_bh(void *_args)
 	args.h_name = a->h_child_name;
 	args.h_nlen = a->h_child_nlen;
 	err = hn_job(&args);
+	/* locked by lookup_wlock_by_{name,ino}(), not described */
 	if (dentry) {
 		if (au_di(dentry))
-			di_write_unlock(dentry);
+			context_unsafe(di_write_unlock(dentry));
 		dput(dentry);
 	}
 	if (inode && try_iput) {
-		ii_write_unlock(inode);
+		context_unsafe(ii_write_unlock(inode));
 		iput(inode);
 	}
 

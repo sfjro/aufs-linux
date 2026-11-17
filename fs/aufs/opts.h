@@ -238,8 +238,11 @@ int au_opt_add(struct au_opt *opt, char *opt_str, unsigned long sb_flags,
 struct super_block;
 int au_opts_verify(struct super_block *sb, unsigned long sb_flags,
 		   unsigned int pending);
-int au_opts_mount(struct super_block *sb, struct au_opts *opts);
-int au_opts_remount(struct super_block *sb, struct au_opts *opts);
+/* called with the root dinfo write-locked */
+int au_opts_mount(struct super_block *sb, struct au_opts *opts)
+	__must_hold(&au_di(sb->s_root)->di_rwsem);
+int au_opts_remount(struct super_block *sb, struct au_opts *opts)
+	__must_hold(&au_di(sb->s_root)->di_rwsem);
 
 unsigned int au_opt_udba(struct super_block *sb);
 

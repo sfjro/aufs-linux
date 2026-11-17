@@ -52,7 +52,8 @@ static int au_fsctx_reconfigure(struct fs_context *fc)
 	if (!err) {
 		di_write_lock_child(root);
 		err = au_opts_verify(sb, fc->sb_flags, /*pending*/0);
-		aufs_write_unlock(root);
+		di_write_unlock(root);
+		si_write_unlock(sb);
 	}
 
 	inode = d_inode(root);
@@ -76,7 +77,8 @@ static int au_fsctx_reconfigure(struct fs_context *fc)
 	}
 
 	au_fhsm_wrote_all(sb, /*force*/1); /* ?? */
-	aufs_write_unlock(root);
+	di_write_unlock(root);
+	si_write_unlock(sb);
 
 out:
 	inode_unlock(inode);
@@ -123,7 +125,10 @@ static int au_fsctx_fill_super(struct super_block *sb, struct fs_context *fc)
 	root = sb->s_root;
 	inode = d_inode(root);
 	ii_write_lock_parent(inode);
-	aufs_write_unlock(root);
+	di_write_unlock(root);
+	/* the root iinfo was released by di_write_unlock() above */
+	__release(&au_ii(inode)->ii_rwsem);
+	si_write_unlock(sb);
 
 	/* lock vfs_inode first, then aufs. */
 	inode_lock(inode);
@@ -1215,7 +1220,8 @@ int aufs_fsctx_init(struct fs_context *fc)
 		err = PTR_ERR(a->sbinfo);
 		if (IS_ERR(a->sbinfo))
 			goto out_opt;
-		au_rw_write_unlock(&a->sbinfo->si_rwsem);
+		/* locked by au_si_alloc(), not published yet */
+		context_unsafe(au_rw_write_unlock(&a->sbinfo->si_rwsem));
 	}
 
 	err = 0;

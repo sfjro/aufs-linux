@@ -642,6 +642,7 @@ static int au_opt_simple(struct super_block *sb, struct au_opt *opt,
  */
 static int au_opt_br(struct super_block *sb, struct au_opt *opt,
 		     struct au_opts *opts)
+	__must_hold(&au_di(sb->s_root)->di_rwsem)
 {
 	int err, do_refresh;
 

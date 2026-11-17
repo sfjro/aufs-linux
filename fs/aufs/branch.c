@@ -737,6 +737,7 @@ out:
 
 static int test_children_busy(struct dentry *root, aufs_bindex_t bindex,
 			      const unsigned int verbose)
+	__must_hold(&au_di(root)->di_rwsem)
 {
 	int err;
 	unsigned int sigen;
@@ -794,6 +795,7 @@ out:
 
 static int test_file_busy(struct super_block *sb, aufs_bindex_t br_id,
 			  struct file **to_free, int opened)
+	__must_hold(&au_di(sb->s_root)->di_rwsem)
 {
 	int err, idx;
 	unsigned long long ull, max;

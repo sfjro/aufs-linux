@@ -801,7 +801,7 @@ int au_refresh_dentry(struct dentry *dentry, struct dentry *parent)
 		AuTraceErr(err);
 	}
 	au_di_realloc(dinfo, nbr, /*may_shrink*/1); /* harmless if err */
-	au_rw_write_unlock(&tmp->di_rwsem);
+	au_di_tmp_unlock(tmp);
 	au_di_free(tmp);
 	if (unlikely(err))
 		goto out;

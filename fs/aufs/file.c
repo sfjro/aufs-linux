@@ -462,6 +462,8 @@ int au_ready_to_write(struct file *file, loff_t len, struct au_pin *pin)
 
 	if (!err) {
 		au_pin_set_parent_lflag(pin, /*lflag*/0);
+		/* the parent dinfo read lock is owned by @pin now */
+		__release_shared(&au_di(parent)->di_rwsem);
 		goto out_dput; /* success */
 	}
 	au_unpin(pin);
@@ -706,6 +708,8 @@ out:
 static int au_do_reval_and_lock_fdi(struct file *file,
 				    int (*reopen)(struct file *file),
 				    unsigned int fi_lsc)
+	__cond_acquires(0, &au_fi(file)->fi_rwsem)
+	__cond_acquires(0, &au_di(file->f_path.dentry)->di_rwsem)
 {
 	int err;
 	unsigned int sigen, figen;
